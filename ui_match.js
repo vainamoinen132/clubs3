@@ -412,7 +412,7 @@ window.UIMatch = {
         if (!f1 || !f2) {
             console.error("Match cannot start: missing fighter(s)", { f1, f2, p: playerFighterId, o: oppFighterId });
             alert("Critical bug: One of the fighters for this match is missing or invalid. Check the console for details.");
-            window.router.loadRoute('club');
+            window.Router.loadRoute('club');
             return;
         }
 
@@ -931,6 +931,6 @@ window.UIMatch = {
         }
 
         gs.addNews('global', `🏆 FORFEIT: ${f.name} awarded a 5-0 win as the opponent failed to field a roster.`);
-        window.router.loadRoute('club');
+        window.Router.loadRoute('club');
     }
 };
