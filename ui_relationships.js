@@ -129,7 +129,7 @@ window.UIRelationships = {
                 let n1 = nodes[i];
                 let n2 = nodes[j];
 
-                let relData = (n1.f.dynamic_state.relationships && n1.f.dynamic_state.relationships[n2.f.id]) || { tension: 0, type: 'neutral' };
+                let relData = window.RelationshipEngine ? window.RelationshipEngine.getRelationship(n1.f.id, n2.f.id) : { tension: 0, type: 'neutral' };
                 let tension = relData.tension || 0;
 
                 let color = tension > 0 ? this.getRelColors(relData.type) : 'rgba(255,255,255,0.1)';
@@ -248,7 +248,7 @@ window.UIRelationships = {
         let f1 = gs.getFighter(this.selectedPair[0]);
         let f2 = gs.getFighter(this.selectedPair[1]);
 
-        let rel = f1.dynamic_state.relationships[f2.id];
+        let rel = window.RelationshipEngine ? window.RelationshipEngine.getRelationship(f1.id, f2.id) : { tension: 0, type: 'neutral', history: [] };
         let color = this.getRelColors(rel.type);
 
         let dp = document.getElementById('rel-detail-panel');
@@ -302,33 +302,25 @@ window.UIRelationships = {
         let filterSet = new Set();
         let allFightersInRels = new Map(); // Store distinct fighters for the dropdown
 
-        // Scan ALL clubs for relationships, or just player club? The user says "a lot of info"
-        // so let's scan all clubs
-        Object.values(gs.clubs).forEach(club => {
-            if (!club.fighter_ids) return;
-            club.fighter_ids.forEach(id => {
-                let f = gs.getFighter(id);
-                if (f && f.dynamic_state && f.dynamic_state.relationships) {
-                    Object.keys(f.dynamic_state.relationships).forEach(otherId => {
-                        let relData = f.dynamic_state.relationships[otherId];
-                        if (!relData || typeof relData.type !== 'string') return;
+        // Scan the central graph for relationships across different clubs
+        if (gs.relationshipGraph) {
+            Object.values(gs.relationshipGraph).forEach(relData => {
+                if (typeof relData.type !== 'string' || relData.type === 'neutral') return;
 
-                        let otherF = gs.getFighter(otherId);
-                        // Is cross club?
-                        if (otherF && otherF.club_id !== club.id) {
-                            // Prevent duplicates (A->B and B->A)
-                            let pairKey = [f.id, otherF.id].sort().join('-');
-                            if (!filterSet.has(pairKey)) {
-                                filterSet.add(pairKey);
-                                crossRels.push({ f1: f, f2: otherF, data: relData });
-                                allFightersInRels.set(f.id, f.name);
-                                allFightersInRels.set(otherF.id, otherF.name);
-                            }
-                        }
-                    });
+                let f1 = gs.getFighter(relData.f1);
+                let f2 = gs.getFighter(relData.f2);
+
+                if (f1 && f2 && f1.club_id && f2.club_id && f1.club_id !== f2.club_id) {
+                    let pairKey = [f1.id, f2.id].sort().join('-');
+                    if (!filterSet.has(pairKey)) {
+                        filterSet.add(pairKey);
+                        crossRels.push({ f1: f1, f2: f2, data: relData });
+                        allFightersInRels.set(f1.id, f1.name);
+                        allFightersInRels.set(f2.id, f2.name);
+                    }
                 }
             });
-        });
+        }
 
         const cc = document.getElementById('cross-club-list');
         const select = document.getElementById('cross-club-filter-select');
@@ -379,31 +371,34 @@ window.UIRelationships = {
         let pclub = gs.getClub(gs.playerClubId);
         let tagsHTML = '';
 
-        if (pclub && pclub.fighter_ids) {
+        if (pclub && pclub.fighter_ids && gs.relationshipGraph) {
             let processedPairs = new Set();
-            pclub.fighter_ids.forEach(id => {
-                let f = gs.getFighter(id);
-                if (f && f.dynamic_state && f.dynamic_state.relationships) {
-                    Object.keys(f.dynamic_state.relationships).forEach(otherId => {
-                        if (pclub.fighter_ids.includes(otherId)) {
-                            let pairKey = [id, otherId].sort().join('-');
-                            if (!processedPairs.has(pairKey)) {
-                                processedPairs.add(pairKey);
-                                let relData = f.dynamic_state.relationships[otherId];
-                                let otherF = gs.getFighter(otherId);
+            Object.values(gs.relationshipGraph).forEach(relData => {
+                if (typeof relData.type !== 'string' || relData.type === 'neutral') return;
 
-                                if (relData && typeof relData.type === 'string' && ['rivalry', 'bitter_rivals', 'obsession', 'mentor', 'committed', 'best_friends', 'lovers', 'attraction'].includes(relData.type)) {
-                                    let color = this.getRelColors(relData.type);
-                                    tagsHTML += `
-                                        <div style="background: rgba(0,0,0,0.4); border-left: 4px solid ${color}; padding: 8px 12px; border-radius: 4px; display: flex; align-items: center; gap: 10px;">
-                                            <span style="color: ${color}; font-weight: bold; font-size: 0.8em; letter-spacing: 1px;">${window.UIRelationships.getRelLabel(relData.type)}</span>
-                                            <span style="color: #fff; font-size: 0.9em;"><strong>${f.name}</strong> & <strong>${otherF.name}</strong></span>
-                                        </div>
-                                    `;
-                                }
-                            }
+                // Check if both fighters are in the player's club
+                if (pclub.fighter_ids.includes(relData.f1) && pclub.fighter_ids.includes(relData.f2)) {
+                    let pairKey = [relData.f1, relData.f2].sort().join('-');
+                    if (!processedPairs.has(pairKey)) {
+                        processedPairs.add(pairKey);
+                        let f1 = gs.getFighter(relData.f1);
+                        let f2 = gs.getFighter(relData.f2);
+
+                        if (f1 && f2 && ['rivalry', 'bitter_rivals', 'obsession', 'mentor', 'committed', 'best_friends', 'lovers', 'attraction'].includes(relData.type)) {
+                            let color = this.getRelColors(relData.type);
+
+                            // Display Dominant Partner if applicable
+                            let domIndicator1 = relData.dominant_partner_id === f1.id ? ' 👑' : '';
+                            let domIndicator2 = relData.dominant_partner_id === f2.id ? ' 👑' : '';
+
+                            tagsHTML += `
+                                <div style="background: rgba(0,0,0,0.4); border-left: 4px solid ${color}; padding: 8px 12px; border-radius: 4px; display: flex; align-items: center; gap: 10px;">
+                                    <span style="color: ${color}; font-weight: bold; font-size: 0.8em; letter-spacing: 1px;">${window.UIRelationships.getRelLabel(relData.type)}</span>
+                                    <span style="color: #fff; font-size: 0.9em;"><strong>${f1.name}${domIndicator1}</strong> & <strong>${f2.name}${domIndicator2}</strong></span>
+                                </div>
+                            `;
                         }
-                    });
+                    }
                 }
             });
         }

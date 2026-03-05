@@ -138,6 +138,132 @@ window.UIComponents = {
     },
 
     /**
+     * Renders an impressive end-of-season summary modal.
+     */
+    showSeasonHighlights() {
+        const gs = window.GameState;
+        this.closeModal();
+
+        // Compute standings
+        let standings = gs.leagueStandings || [];
+        if (standings.length < 2) return;
+
+        let champ = standings[0];
+        let champClub = gs.getClub(champ.id);
+        let relegated = standings[standings.length - 1];
+        let relegatedClub = gs.getClub(relegated.id);
+
+        // Find active fighters
+        let pFighters = Object.values(gs.fighters).filter(f => f.club_id);
+        let mvp = null;
+        let rookie = null;
+        let mostImproved = null;
+
+        if (pFighters.length > 0) {
+            mvp = pFighters.reduce((a, b) => ((a.dynamic_state.form || 0) + (a.dynamic_state.morale || 0)) > ((b.dynamic_state.form || 0) + (b.dynamic_state.morale || 0)) ? a : b);
+            let rookies = pFighters.filter(f => f.age <= 23);
+            if (rookies.length > 0) {
+                rookie = rookies.reduce((a, b) => (a.dynamic_state.form || 0) > (b.dynamic_state.form || 0) ? a : b);
+            }
+
+            let validImproved = pFighters.filter(f => f.history_start_of_season_OVR !== undefined);
+            if (validImproved.length > 0) {
+                mostImproved = validImproved.reduce((a, b) => {
+                    let aOvr = Math.floor((a.core_stats.power + a.core_stats.technique + a.core_stats.speed) / 3);
+                    let bOvr = Math.floor((b.core_stats.power + b.core_stats.technique + b.core_stats.speed) / 3);
+                    let aDiff = aOvr - a.history_start_of_season_OVR;
+                    let bDiff = bOvr - b.history_start_of_season_OVR;
+                    return aDiff > bDiff ? a : b;
+                });
+                let mOvr = Math.floor((mostImproved.core_stats.power + mostImproved.core_stats.technique + mostImproved.core_stats.speed) / 3);
+                let diff = mOvr - mostImproved.history_start_of_season_OVR;
+                if (diff <= 0) mostImproved = null;
+            }
+        }
+
+        // Calculate Player Standing
+        let playerStandingIndex = standings.findIndex(s => s.id === gs.playerClubId);
+        let playerStanding = playerStandingIndex >= 0 ? standings[playerStandingIndex] : null;
+        let playerRank = playerStandingIndex + 1;
+        const ordinal_suffix_of = (i) => {
+            let j = i % 10, k = i % 100;
+            if (j == 1 && k != 11) return i + "st";
+            if (j == 2 && k != 12) return i + "nd";
+            if (j == 3 && k != 13) return i + "rd";
+            return i + "th";
+        };
+        let rankStr = ordinal_suffix_of(playerRank);
+
+        const overlay = document.createElement('div');
+        overlay.id = 'global-modal-overlay';
+        overlay.style.position = 'fixed';
+        overlay.style.top = '0';
+        overlay.style.left = '0';
+        overlay.style.width = '100vw';
+        overlay.style.height = '100vh';
+        overlay.style.backgroundColor = 'rgba(0,0,0,0.85)';
+        overlay.style.zIndex = '9999';
+        overlay.style.display = 'flex';
+        overlay.style.justifyContent = 'center';
+        overlay.style.alignItems = 'center';
+
+        overlay.innerHTML = `
+            <div style="background: rgba(20, 20, 25, 0.95); border: 1px solid rgba(255,255,255,0.1); border-top: 4px solid #d4af37; padding: 2rem; border-radius: 12px; max-width: 600px; width: 90%; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.8), 0 0 30px rgba(212,175,55,0.2); text-align: center; font-family: 'Inter', sans-serif;">
+                <h2 style="font-family: 'Outfit', sans-serif; color: #d4af37; font-size: 2.2rem; margin-top: 0; margin-bottom: 0.5rem; text-shadow: 0 0 10px rgba(212,175,55,0.5);">Season ${gs.season} Highlights</h2>
+                <p style="color: #aaa; margin-bottom: 2rem;">The official season matches have concluded. The next two weeks are dedicated purely to offseason training and recovery.</p>
+
+                <div style="display: flex; justify-content: space-around; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+                    <div style="background: rgba(0,0,0,0.5); padding: 1rem; border-radius: 8px; flex: 1; min-width: 250px; border: 1px solid rgba(212,175,55,0.2);">
+                        <h4 style="color: #ccc; margin: 0 0 0.5rem 0; font-family: 'Outfit', sans-serif; text-transform: uppercase; font-size: 0.9rem;">👑 League Champions</h4>
+                        <div style="font-size: 1.4rem; font-weight: bold; color: #fff;">${champClub ? champClub.name : 'Unknown'}</div>
+                        <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">${champ.pts} Pts | ${champ.w}W - ${champ.l}L</div>
+                    </div>
+
+                    <div style="background: rgba(0,0,0,0.5); padding: 1rem; border-radius: 8px; flex: 1; min-width: 250px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h4 style="color: #ccc; margin: 0 0 0.5rem 0; font-family: 'Outfit', sans-serif; text-transform: uppercase; font-size: 0.9rem;">🌟 Fighter of the Season</h4>
+                        <div style="font-size: 1.2rem; font-weight: bold; color: #fff;">${mvp ? mvp.name : 'N/A'}</div>
+                        <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">${mvp ? (gs.getClub(mvp.club_id)?.name || '') : ''}</div>
+                    </div>
+                </div>
+
+                <div style="background: rgba(0,0,0,0.5); padding: 1rem; border-radius: 8px; margin-bottom: 2rem; border: 1px solid rgba(255,255,255,0.05); text-align: left;">
+                    <h4 style="color: #ccc; margin: 0 0 0.5rem 0; font-family: 'Outfit', sans-serif; text-transform: uppercase; font-size: 0.9rem;">📈 Your Season Result</h4>
+                    <div style="font-size: 1.2rem; font-weight: bold; color: #fff;">${playerStanding ? `${playerStanding.name} finished in ${rankStr} Place` : 'Unknown'}</div>
+                    <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">${playerStanding ? `${playerStanding.pts} Points | ${playerStanding.w} Wins - ${playerStanding.l} Losses` : ''}</div>
+                </div>
+
+                <div style="display: flex; justify-content: space-around; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem;">
+                    ${rookie ? `
+                    <div style="background: rgba(0,0,0,0.5); padding: 1rem; border-radius: 8px; flex: 1; min-width: 250px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h4 style="color: #ccc; margin: 0 0 0.5rem 0; font-family: 'Outfit', sans-serif; text-transform: uppercase; font-size: 0.9rem;">✨ Breakthrough Rookie</h4>
+                        <div style="font-size: 1.2rem; font-weight: bold; color: #fff;">${rookie.name} (Age ${rookie.age})</div>
+                        <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">${gs.getClub(rookie.club_id)?.name || ''}</div>
+                    </div>
+                    ` : ''}
+
+                    ${mostImproved ? `
+                    <div style="background: rgba(0,0,0,0.5); padding: 1rem; border-radius: 8px; flex: 1; min-width: 250px; border: 1px solid rgba(255,255,255,0.05);">
+                        <h4 style="color: #ccc; margin: 0 0 0.5rem 0; font-family: 'Outfit', sans-serif; text-transform: uppercase; font-size: 0.9rem;">🚀 Most Improved Fighter</h4>
+                        <div style="font-size: 1.2rem; font-weight: bold; color: #fff;">${mostImproved.name}</div>
+                        <div style="color: var(--text-muted); font-size: 0.85rem; margin-top: 5px;">Massive skill jump. ${gs.getClub(mostImproved.club_id)?.name || 'Unknown'}</div>
+                    </div>
+                    ` : ''}
+                </div>
+
+                <div style="background: rgba(255, 51, 102, 0.1); padding: 1rem; border-radius: 8px; margin-bottom: 2rem; border: 1px solid rgba(255, 51, 102, 0.2);">
+                    <h4 style="color: #ff3366; margin: 0 0 0.5rem 0; font-family: 'Outfit', sans-serif; text-transform: uppercase; font-size: 0.9rem;">🔻 At The Bottom</h4>
+                    <div style="font-size: 1.1rem; font-weight: bold; color: #fff;">${relegatedClub ? relegatedClub.name : 'Unknown'}</div>
+                    <div style="color: rgba(255,255,255,0.6); font-size: 0.85rem; margin-top: 5px;">A dismal campaign. They will need major rebuilding.</div>
+                </div>
+
+                <button style="background: #3b82f6; color: #fff; border: none; padding: 12px 35px; border-radius: 8px; font-weight: bold; cursor: pointer; text-transform: uppercase; letter-spacing: 1.5px; transition: filter 0.2s;" onmouseover="this.style.filter='brightness(1.2)'" onmouseout="this.style.filter='none'" onclick="window.UIComponents.closeModal()">Begin Offseason</button>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+    },
+
+    /**
      * Replaces standard alert() with a stylized HTML modal overlay
      */
     showModal(title, text, type = 'info') {

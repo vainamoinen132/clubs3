@@ -69,16 +69,22 @@ window.UIDialogue = {
         }
 
         // 3. Relationships
-        if (f.dynamic_state.relationships && Object.keys(f.dynamic_state.relationships).length > 0) {
-            Object.keys(f.dynamic_state.relationships).forEach(targetId => {
-                let target = window.GameState.getFighter(targetId);
-                let relTypeVal = f.dynamic_state.relationships[targetId];
-                let relType = relTypeVal.type ? relTypeVal.type : relTypeVal;
+        if (window.GameState.relationshipGraph) {
+            Object.values(window.GameState.relationshipGraph).forEach(relData => {
+                if (typeof relData.type === 'string' && relData.type !== 'neutral') {
+                    if (relData.f1 === f.id || relData.f2 === f.id) {
+                        let targetId = relData.f1 === f.id ? relData.f2 : relData.f1;
+                        let target = window.GameState.getFighter(targetId);
+                        if (target) {
+                            let relType = relData.type;
+                            let isExternal = target.club_id && target.club_id !== window.GameState.playerClubId;
+                            let clubStr = isExternal ? `[${window.GameState.getClub(target.club_id).name}]` : `[Teammate]`;
+                            let displayType = window.UIRelationships ? window.UIRelationships.getRelLabel(relType) : relType.replace(/_/g, ' ');
 
-                let isExternal = target.club_id && target.club_id !== window.GameState.playerClubId;
-                let clubStr = isExternal ? `[${window.GameState.getClub(target.club_id).name}]` : `[Teammate]`;
-
-                html += `<button class="btn-primary" style="background:#222; text-align:left; border-left: 3px solid #e91e63;" onclick="window.UIDialogue._topicRelationship('${targetId}', '${relType}', ${isExternal})">Ask about ${target.name} ${clubStr} (${relType.replace('_', ' ')})</button>`;
+                            html += `<button class="btn-primary" style="background:#222; text-align:left; border-left: 3px solid #e91e63;" onclick="window.UIDialogue._topicRelationship('${targetId}', '${relType}', ${isExternal})">Ask about ${target.name} ${clubStr} (${displayType})</button>`;
+                        }
+                    }
+                }
             });
         }
 
@@ -146,7 +152,7 @@ window.UIDialogue = {
         let text = "";
         let opts = "";
 
-        if (relType === 'Lover' || relType === 'Obsession') {
+        if (relType === 'lovers' || relType === 'obsession' || relType === 'committed') {
             if (isExternal) {
                 let cName = gs.getClub(target.club_id).name;
                 text = `${f.name} blushes furiously, looking away. "It's complicated... I know she fights for ${cName}, but we try to keep that separate from us. It's hard."`;
@@ -159,7 +165,7 @@ window.UIDialogue = {
                 text = `${f.name} smiles softly. "Having ${target.name} around the gym... it makes the training camps bearable. We push each other."`;
                 opts = `<button class="btn-primary" style="background:transparent; border:1px solid #555;" onclick="window.UIDialogue._showDialogueModal()">Back to Topics</button>`;
             }
-        } else if (relType === 'Bitter Rival') {
+        } else if (relType === 'bitter_rivals' || relType === 'rivalry') {
             text = `${f.name}'s jaw clenches. "Don't even say her name. I want to break ${target.name} in half. Just book the match."`;
             opts = `<button class="btn-primary" style="background:transparent; border:1px solid #555;" onclick="window.UIDialogue._showDialogueModal()">Back to Topics</button>`;
         } else {
@@ -192,7 +198,15 @@ window.UIDialogue = {
         const gs = window.GameState;
         const f = gs.getFighter(this.currentFighterId);
 
-        delete f.dynamic_state.relationships[targetId];
+        if (window.RelationshipEngine) {
+            let rel = window.RelationshipEngine.getRelationship(f.id, targetId);
+            rel.type = 'friction';
+            rel.tension = 80;
+            if (!rel.history) rel.history = [];
+            rel.history.push('Manager forced them to break off their relationship.');
+
+            window.RelationshipEngine._breakUpCouple(f, window.GameState.getFighter(targetId));
+        }
         f.dynamic_state.morale = Math.max(0, f.dynamic_state.morale - 40);
         f.dynamic_state.stress = Math.min(100, f.dynamic_state.stress + 30);
 

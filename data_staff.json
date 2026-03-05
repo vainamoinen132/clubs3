@@ -17,7 +17,7 @@
             "all_training_gain": 7,
             "match_composure": 4
         },
-        "salary": 32000,
+        "salary": 16000,
         "win_bonus": 800,
         "bonus_cap": 5600
     },
@@ -39,7 +39,7 @@
             "all_training_gain": 4,
             "match_composure": 2
         },
-        "salary": 15000,
+        "salary": 7500,
         "win_bonus": 300,
         "bonus_cap": 2100
     },
@@ -62,7 +62,7 @@
             "naked_wrestling_affinity_growth": 10,
             "control_in_grapple": 5
         },
-        "salary": 26000,
+        "salary": 13000,
         "win_bonus": 650,
         "bonus_cap": 4550
     },
@@ -84,7 +84,7 @@
             "boxing_affinity_growth": 10,
             "technique_in_boxing": 5
         },
-        "salary": 24000,
+        "salary": 12000,
         "win_bonus": 600,
         "bonus_cap": 4200
     },
@@ -106,7 +106,7 @@
             "boxing_affinity_growth": 6,
             "technique_in_boxing": 2
         },
-        "salary": 12000,
+        "salary": 6000,
         "win_bonus": 200,
         "bonus_cap": 1400
     },
@@ -126,9 +126,9 @@
         ],
         "passive_bonus": {
             "endurance_growth": 8,
-            "fatigue_drain_reduction": 0.20
+            "fatigue_drain_reduction": 20
         },
-        "salary": 22000,
+        "salary": 11000,
         "win_bonus": 550,
         "bonus_cap": 3850
     },
@@ -148,9 +148,9 @@
         ],
         "passive_bonus": {
             "endurance_growth": 5,
-            "fatigue_drain_reduction": 0.10
+            "fatigue_drain_reduction": 10
         },
-        "salary": 10000,
+        "salary": 5000,
         "win_bonus": 175,
         "bonus_cap": 1225
     },
@@ -171,9 +171,9 @@
         ],
         "passive_bonus": {
             "composure_growth": 8,
-            "stress_drain_reduction": 0.25
+            "stress_drain_reduction": 25
         },
-        "salary": 24000,
+        "salary": 12000,
         "win_bonus": 600,
         "bonus_cap": 4200
     },
@@ -193,9 +193,9 @@
         ],
         "passive_bonus": {
             "composure_growth": 5,
-            "stress_drain_reduction": 0.12
+            "stress_drain_reduction": 12
         },
-        "salary": 12000,
+        "salary": 6000,
         "win_bonus": 200,
         "bonus_cap": 1400
     },
@@ -217,7 +217,7 @@
             "naked_wrestling_affinity_growth": 7,
             "control_in_grapple": 2
         },
-        "salary": 13000,
+        "salary": 6500,
         "win_bonus": 300,
         "bonus_cap": 2100
     }

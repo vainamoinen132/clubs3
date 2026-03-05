@@ -118,6 +118,11 @@ window.UIStart = {
         // Wipe old save if any
         window.SaveSystem.clearSave();
 
+        // Generate initial Free Agents
+        if (window.AITransfers && window.AITransfers._generateProspects) {
+            window.AITransfers._generateProspects();
+        }
+
         // Generate Schedule
         if (window.SimSchedule) window.SimSchedule.generateSeasonSchedule();
 

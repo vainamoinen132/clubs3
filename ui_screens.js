@@ -82,7 +82,7 @@ window.UIScreens = {
         if (window.UITransfers) {
             window.UITransfers.render(container, params);
         } else {
-            container.innerHTML = "<h1>Scouting (Loading...)</h1>";
+            container.innerHTML = "<h1>Transfers (Loading...)</h1>";
         }
     },
 

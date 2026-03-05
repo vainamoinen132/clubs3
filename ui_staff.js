@@ -126,7 +126,7 @@ window.UIStaff = {
             const winBonusStr = s.win_bonus ? `$${s.win_bonus.toLocaleString()}/win` : '—';
             const capStr = s.bonus_cap ? ` (cap $${s.bonus_cap.toLocaleString()}/yr)` : '';
             // Estimated weekly cost shown on Hire button (base + approx 3 wins/wk)
-            const estAnnual = s.salary + Math.min(s.win_bonus * 7, s.bonus_cap || 0);
+            const estAnnual = (s.salary || 0) + Math.min((s.win_bonus || 0) * 7, s.bonus_cap || 999999);
 
             html += `
             <div class="glass-panel" style="padding: 1rem; margin-bottom: 1rem; border-left: 3px solid var(--accent);">
@@ -170,10 +170,31 @@ window.UIStaff = {
             return;
         }
 
-        gs.money -= cost;
-        club.staff[role] = id;
+        const s = gs.staff[id];
 
-        // Remove from pool
+        // If they are employed by another club, poach them
+        if (s.employed_by && s.employed_by !== club.id) {
+            const oldClub = gs.getClub(s.employed_by);
+            if (oldClub) {
+                if (!confirm(`This coach is currently employed by ${oldClub.name}. Are you sure you want to buy out their contract and poach them for $${cost * 2}?`)) {
+                    return;
+                }
+                if (gs.money < cost * 2) {
+                    alert("Not enough money to buy out their contract!");
+                    return;
+                }
+                gs.money -= cost * 2; // Poaching costs double
+                oldClub.staff[role] = null; // Remove from old club
+            }
+        } else {
+            // Normal hire from free agency
+            gs.money -= cost;
+        }
+
+        club.staff[role] = id;
+        s.employed_by = club.id;
+
+        // Remove from pool if they were in it
         gs.staffPool = gs.staffPool.filter(sId => sId !== id);
 
         gs.addNews('transfer', `${club.name} hired ${gs.staff[id].name} as their new ${role.replace(/_/g, ' ')}.`);

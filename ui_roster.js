@@ -59,6 +59,9 @@ window.UIRoster = {
         const rivalryStyle = fighter.personality?.rivalry_style || 'Unknown';
         const ego = fighter.dynamic_state?.ego || 'Normal';
 
+        const isRookieAcademy = fighter.traits?.includes('academy_product') && fighter.age <= 21;
+        const sev = (isRookieAcademy || !fighter.contract) ? 0 : (fighter.contract.salary * (fighter.contract.seasons_remaining || 1));
+        const btnText = sev === 0 ? "Free Release" : `Severance: $${sev.toLocaleString()}`;
 
         detailDiv.innerHTML = `
             <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 2rem;">
@@ -71,6 +74,8 @@ window.UIRoster = {
                         <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.3rem;">
                             <span style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em;">Potential:</span>
                             <span>${this._renderPotentialStars(fighter)}</span>
+                            <span style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.05em; margin-left:1rem;">Release Clause:</span>
+                            <span style="font-weight:bold; color:#fff;">$${(fighter.contract?.release_clause || 0).toLocaleString()}</span>
                         </div>
                     </div>
                 </div>
@@ -125,10 +130,13 @@ window.UIRoster = {
                     </div>
                 </div>
             </div>
-            <div style="display:flex; justify-content:flex-end; gap: 1rem; margin-top: 2rem;">
+            <div style="display:flex; justify-content:flex-end; gap: 1rem; margin-top: 2rem; align-items:center;">
                 <button class="btn-primary" style="background:#ffca28; font-size: 0.9rem; padding: 0.6rem 1rem; color: #000;" onclick="window.UIRoster.offerToMarket('${fighter.id}')">List for Transfer</button>
-                ${fighter.contract ? `<button class="btn-primary" style="background:#555; font-size: 0.9rem; padding: 0.6rem 1rem;" onclick="window.UIRoster.renegotiate('${fighter.id}')">Renegotiate Contract</button>` : ''}
-                <button class="btn-primary" style="background:var(--accent); font-size: 0.9rem; padding: 0.6rem 1rem;" onclick="window.UIRoster.releaseFighter('${fighter.id}')">Release Clause: $${(fighter.contract?.release_clause || 0).toLocaleString()}</button>
+                ${(window.GameState.pendingBosmanMoves && window.GameState.pendingBosmanMoves.find(m => m.fighterId === fighter.id))
+                ? `<div style="background:rgba(255,100,0,0.2); border:1px solid #ff80ab; padding: 0.6rem 1rem; border-radius:4px; font-weight:bold; color:#ff80ab; font-size:0.9rem;">Leaving End of Season</div>`
+                : (fighter.contract ? `<button class="btn-primary" style="background:#555; font-size: 0.9rem; padding: 0.6rem 1rem;" onclick="window.UIRoster.renegotiate('${fighter.id}')">Renegotiate Contract</button>` : '')
+            }
+                <button class="btn-primary" style="background:var(--accent); font-size: 0.9rem; padding: 0.6rem 1rem;" onclick="window.UITransfers.releaseAsFreeAgent('${fighter.id}')">${btnText}</button>
             </div>
         `;
     },
@@ -140,16 +148,30 @@ window.UIRoster = {
     },
 
     _renderRelationships(fighter) {
-        if (!fighter.dynamic_state.relationships || Object.keys(fighter.dynamic_state.relationships).length === 0) {
+        if (!window.RelationshipEngine) return `<p class="text-muted">No notable relationships formed yet.</p>`;
+
+        const gs = window.GameState;
+        let relationships = [];
+
+        // Scan the central graph for relationships involving this fighter
+        if (gs.relationshipGraph) {
+            Object.values(gs.relationshipGraph).forEach(relData => {
+                if (typeof relData.type === 'string' && relData.type !== 'neutral') {
+                    if (relData.f1 === fighter.id) relationships.push({ id: relData.f2, type: relData.type });
+                    else if (relData.f2 === fighter.id) relationships.push({ id: relData.f1, type: relData.type });
+                }
+            });
+        }
+
+        if (relationships.length === 0) {
             return `<p class="text-muted">No notable relationships formed yet.</p>`;
         }
 
-        const gs = window.GameState;
-        let relStr = Object.keys(fighter.dynamic_state.relationships).map(tId => {
-            let type = fighter.dynamic_state.relationships[tId];
-            let targetName = gs.fighters[tId] ? gs.fighters[tId].name : "Unknown";
-            let color = type === 'Lovers' ? '#e91e63' : (type === 'Rival' ? '#ff3d00' : '#00e676');
-            return `<div style="margin-bottom: 5px;"><strong>${targetName}</strong> - <span style="color:${color}; font-weight:bold;">${type}</span></div>`;
+        let relStr = relationships.map(rel => {
+            let targetName = gs.fighters[rel.id] ? gs.fighters[rel.id].name : "Unknown";
+            let typeLabel = window.UIRelationships ? window.UIRelationships.getRelLabel(rel.type) : rel.type.replace(/_/g, ' ').toUpperCase();
+            let color = window.UIRelationships ? window.UIRelationships.getRelColors(rel.type) : '#00e676';
+            return `<div style="margin-bottom: 5px;"><strong>${targetName}</strong> - <span style="color:${color}; font-weight:bold;">${typeLabel}</span></div>`;
         }).join('');
 
         return relStr;
@@ -199,6 +221,11 @@ window.UIRoster = {
         const gs = window.GameState;
         const f = gs.getFighter(fighterId);
         if (!f || !f.contract) return;
+
+        if (gs.pendingBosmanMoves && gs.pendingBosmanMoves.find(m => m.fighterId === fighterId)) {
+            if (window.UIComponents) window.UIComponents.showModal("Already Signed", "This fighter has already signed a Bosman pre-contract to join another club next season. You cannot renegotiate her contract.", "danger");
+            return;
+        }
 
         if (!window.ContractEngine || !window.ContractEngine.startNegotiation) {
             alert("Contract engine not fully loaded.");
@@ -253,10 +280,10 @@ window.UIRoster = {
                 </div>
                 
                 <div style="background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 8px; margin-bottom: 1.5rem; min-height: 80px;" id="neg-feedback-box">
-                    <p style="color: #ccc; margin: 0; line-height: 1.5;"><strong>Agent:</strong> "${initialReasons} To sign today, she requires an annual salary of <strong>$${neg.targetSalary.toLocaleString()}</strong> on a <strong>${neg.targetDuration}-year</strong> contract."</p>
+                    <p style="color: #ccc; margin: 0; line-height: 1.5;"><strong>Agent:</strong> "${initialReasons} To sign today, she requires an annual salary of <strong>$${neg.targetSalary.toLocaleString()}</strong> on a <strong>${neg.targetDuration}-year</strong> contract, with a <strong>$${neg.targetReleaseClause?.toLocaleString() || (neg.targetSalary * 8).toLocaleString()}</strong> release clause."</p>
                 </div>
 
-                <div id="neg-inputs" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
+                <div id="neg-inputs" style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
                     <div>
                         <label style="display:block; font-size: 0.8rem; color:var(--text-muted); margin-bottom: 0.5rem; text-transform:uppercase;">Annual Salary ($)</label>
                         <input type="number" id="neg-offer-salary" value="${neg.targetSalary}" style="width:100%; padding: 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; font-size: 1.1rem; outline: none;">
@@ -270,6 +297,10 @@ window.UIRoster = {
                             <option value="4" ${neg.targetDuration === 4 ? 'selected' : ''}>4 Years</option>
                             <option value="5" ${neg.targetDuration === 5 ? 'selected' : ''}>5 Years</option>
                         </select>
+                    </div>
+                    <div>
+                        <label style="display:block; font-size: 0.8rem; color:var(--text-muted); margin-bottom: 0.5rem; text-transform:uppercase;">Release Clause ($)</label>
+                        <input type="number" id="neg-offer-clause" value="${neg.targetReleaseClause || (neg.targetSalary * 8)}" style="width:100%; padding: 0.8rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); color: #fff; border-radius: 4px; font-size: 1.1rem; outline: none;">
                     </div>
                 </div>
 
@@ -293,10 +324,12 @@ window.UIRoster = {
         document.getElementById('neg-btn-submit').addEventListener('click', () => {
             let sInput = parseInt(document.getElementById('neg-offer-salary').value);
             let dInput = parseInt(document.getElementById('neg-offer-duration').value);
+            let cInput = parseInt(document.getElementById('neg-offer-clause').value);
 
             if (isNaN(sInput) || sInput <= 0) return;
+            if (isNaN(cInput) || cInput <= 0) cInput = sInput * 8; // Fallback
 
-            let result = window.ContractEngine.evaluateOffer(fighter.id, sInput, dInput);
+            let result = window.ContractEngine.evaluateOffer(fighter.id, sInput, dInput, cInput);
 
             const feedbackBox = document.getElementById('neg-feedback-box');
             const patBox = document.getElementById('neg-patience');
@@ -321,7 +354,7 @@ window.UIRoster = {
                 let color = result.state === 'rejected' ? '#ff9800' : '#cfd8dc';
                 let txt = `<p style="color: ${color}; margin: 0; line-height: 1.5;"><strong>Agent:</strong> "${result.message}`;
                 if (result.counterSalary) {
-                    txt += ` She is now demanding <strong>$${result.counterSalary.toLocaleString()}</strong> over <strong>${result.counterDuration} years</strong>."`;
+                    txt += ` She is now demanding <strong>$${result.counterSalary.toLocaleString()}</strong> over <strong>${result.counterDuration} years</strong> with a <strong>$${(result.counterClause || (result.counterSalary * 8)).toLocaleString()}</strong> release clause."`;
                 } else {
                     txt += `"`;
                 }
@@ -334,6 +367,7 @@ window.UIRoster = {
 
                 if (result.counterSalary) document.getElementById('neg-offer-salary').value = result.counterSalary;
                 if (result.counterDuration) document.getElementById('neg-offer-duration').value = result.counterDuration;
+                if (result.counterClause) document.getElementById('neg-offer-clause').value = result.counterClause;
             }
         });
     },

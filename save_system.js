@@ -32,13 +32,19 @@ window.SaveSystem = {
             if (!window.GameState.pendingMilestones) window.GameState.pendingMilestones = [];
             if (!window.GameState.undergroundHistory) window.GameState.undergroundHistory = [];
             if (typeof window.GameState.undergroundAvailableThisWeek === 'undefined') window.GameState.undergroundAvailableThisWeek = true;
+            if (!window.GameState.relationshipGraph) window.GameState.relationshipGraph = {};
 
-            // Migrate: strip doubled portrait path prefix from any fighter avatar stored incorrectly
+            // Migrate: fix corrupted avatar strings (.webp or double prefixes) from older saves
             const PORTRAIT_PREFIX = 'assets/portraits/';
             if (window.GameState.fighters) {
                 Object.values(window.GameState.fighters).forEach(f => {
-                    if (f.avatar && f.avatar.startsWith(PORTRAIT_PREFIX)) {
-                        f.avatar = f.avatar.slice(PORTRAIT_PREFIX.length);
+                    if (f.avatar) {
+                        if (f.avatar.startsWith(PORTRAIT_PREFIX)) {
+                            f.avatar = f.avatar.slice(PORTRAIT_PREFIX.length);
+                        }
+                        if (f.avatar.endsWith('.webp') || f.avatar.endsWith('.webp:1')) {
+                            f.avatar = f.avatar.replace(/\.webp(:\d+)?$/, '.png');
+                        }
                     }
                 });
             }

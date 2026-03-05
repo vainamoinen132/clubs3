@@ -335,7 +335,7 @@ window.UIInteractions = {
         let refuseChance = isCrossClub ? 0.30 : 0.08;
 
         // Existing relationship modifiers
-        const rel = f1.dynamic_state.relationships?.[f2.id];
+        const rel = window.RelationshipEngine ? window.RelationshipEngine.getRelationship(f1.id, f2.id) : null;
         const relType = rel?.type;
         if (relType === 'rivalry') refuseChance += 0.25; // rivals resist intimate activities
         if (relType === 'obsession') refuseChance -= 0.20; // obsession = eager
@@ -392,14 +392,17 @@ window.UIInteractions = {
         const winner = domWins ? f1 : f2;
         const loser = domWins ? f2 : f1;
         const domGap = Math.abs(f1.personality.dominance_hunger - f2.personality.dominance_hunger);
-        const rel = f1.dynamic_state.relationships?.[f2.id];
+        const rel = window.RelationshipEngine ? window.RelationshipEngine.getRelationship(f1.id, f2.id) : null;
 
         const setRel = (type) => {
-            if (!f1.dynamic_state.relationships) f1.dynamic_state.relationships = {};
-            if (!f2.dynamic_state.relationships) f2.dynamic_state.relationships = {};
-            const note = `${actId.replace(/_/g, ' ')} forged a ${type} bond.`;
-            f1.dynamic_state.relationships[f2.id] = { type, tension: 30, history: [note] };
-            f2.dynamic_state.relationships[f1.id] = { type, tension: 30, history: [note] };
+            let rel = window.RelationshipEngine.getRelationship(f1.id, f2.id);
+            rel.type = type;
+            rel.tension = 30;
+            if (!rel.history) rel.history = [];
+            rel.history.push(`${actId.replace(/_/g, ' ')} forged a ${type} bond.`);
+
+            window.RelationshipEngine._applyExclusivity(f1, f2, rel);
+            window.RelationshipEngine._applyExclusivity(f2, f1, rel);
         };
 
         let title = '', text = '';
@@ -539,13 +542,19 @@ window.UIInteractions = {
                 for (let j = i + 1; j < fighters.length && shifts < 2; j++) {
                     if (Math.random() < 0.45) {
                         const a = fighters[i], b = fighters[j];
-                        if (!a.dynamic_state.relationships) a.dynamic_state.relationships = {};
-                        if (!b.dynamic_state.relationships) b.dynamic_state.relationships = {};
                         const roll = Math.random();
                         const rt = roll > 0.7 ? 'lovers' : roll > 0.4 ? 'friendship' : 'rivalry';
                         const note = rt === 'lovers' ? 'Two nights in the mountains changed everything.' : rt === 'friendship' ? 'Isolation forged a genuine bond.' : 'Old grievances resurfaced in close quarters.';
-                        a.dynamic_state.relationships[b.id] = { type: rt, tension: 25, history: [note] };
-                        b.dynamic_state.relationships[a.id] = { type: rt, tension: 25, history: [note] };
+                        if (window.RelationshipEngine) {
+                            let rel = window.RelationshipEngine.getRelationship(a.id, b.id);
+                            rel.type = rt;
+                            rel.tension = 25;
+                            if (!rel.history) rel.history = [];
+                            rel.history.push(note);
+
+                            window.RelationshipEngine._applyExclusivity(a, b, rel);
+                            window.RelationshipEngine._applyExclusivity(b, a, rel);
+                        }
                         bonds.push(`<span style="color:${rt === 'lovers' ? '#e91e63' : rt === 'friendship' ? '#4caf50' : '#f44336'}">${a.name} & ${b.name} → ${rt.toUpperCase()}</span>`);
                         shifts++;
                     }
@@ -560,10 +569,17 @@ window.UIInteractions = {
             if (fighters.length >= 2 && Math.random() < 0.4) {
                 const a = fighters[Math.floor(Math.random() * fighters.length)];
                 let b; do { b = fighters[Math.floor(Math.random() * fighters.length)]; } while (b === a);
-                [a, b].forEach(f => { if (!f.dynamic_state.relationships) f.dynamic_state.relationships = {}; });
                 const rt = Math.random() > 0.5 ? 'attraction' : 'lovers';
-                a.dynamic_state.relationships[b.id] = { type: rt, tension: 20, history: ['Something ignited under the neon lights.'] };
-                b.dynamic_state.relationships[a.id] = { type: rt, tension: 20, history: ['Something ignited under the neon lights.'] };
+                if (window.RelationshipEngine) {
+                    let rel = window.RelationshipEngine.getRelationship(a.id, b.id);
+                    rel.type = rt;
+                    rel.tension = 20;
+                    if (!rel.history) rel.history = [];
+                    rel.history.push('Something ignited under the neon lights.');
+
+                    window.RelationshipEngine._applyExclusivity(a, b, rel);
+                    window.RelationshipEngine._applyExclusivity(b, a, rel);
+                }
                 bonds.push(`${a.name} & ${b.name}`);
             }
             title = 'Victory Celebration Night';
@@ -576,10 +592,17 @@ window.UIInteractions = {
             if (fighters.length >= 2 && Math.random() < 0.6) {
                 const a = fighters[Math.floor(Math.random() * fighters.length)];
                 let b; do { b = fighters[Math.floor(Math.random() * fighters.length)]; } while (b === a);
-                [a, b].forEach(f => { if (!f.dynamic_state.relationships) f.dynamic_state.relationships = {}; });
                 const rt = Math.random() < 0.66 ? 'friendship' : 'rivalry';
-                a.dynamic_state.relationships[b.id] = { type: rt, tension: 20, history: ['Three days of shared pain and forced proximity revealed something real.'] };
-                b.dynamic_state.relationships[a.id] = { type: rt, tension: 20, history: ['Three days of shared pain and forced proximity revealed something real.'] };
+                if (window.RelationshipEngine) {
+                    let rel = window.RelationshipEngine.getRelationship(a.id, b.id);
+                    rel.type = rt;
+                    rel.tension = 20;
+                    if (!rel.history) rel.history = [];
+                    rel.history.push('Three days of shared pain and forced proximity revealed something real.');
+
+                    window.RelationshipEngine._applyExclusivity(a, b, rel);
+                    window.RelationshipEngine._applyExclusivity(b, a, rel);
+                }
                 bonds.push(`${a.name} & ${b.name} → ${rt.toUpperCase()}`);
                 bType = rt;
             }
@@ -609,14 +632,17 @@ window.UIInteractions = {
         }
 
         const domGap = Math.abs(winner.personality.dominance_hunger - loser.personality.dominance_hunger);
-        const rel = winner.dynamic_state.relationships?.[loser.id];
+        const rel = window.RelationshipEngine ? window.RelationshipEngine.getRelationship(winner.id, loser.id) : null;
 
         const setRel = (type) => {
-            if (!winner.dynamic_state.relationships) winner.dynamic_state.relationships = {};
-            if (!loser.dynamic_state.relationships) loser.dynamic_state.relationships = {};
-            const note = `${actId.replace(/_/g, ' ')} forged a ${type} bond.`;
-            winner.dynamic_state.relationships[loser.id] = { type, tension: 30, history: [note] };
-            loser.dynamic_state.relationships[winner.id] = { type, tension: 30, history: [note] };
+            let rel = window.RelationshipEngine.getRelationship(winner.id, loser.id);
+            rel.type = type;
+            rel.tension = 30;
+            if (!rel.history) rel.history = [];
+            rel.history.push(`${actId.replace(/_/g, ' ')} forged a ${type} bond.`);
+
+            window.RelationshipEngine._applyExclusivity(winner, loser, rel);
+            window.RelationshipEngine._applyExclusivity(loser, winner, rel);
         };
 
         let title = '', text = '';
@@ -630,7 +656,7 @@ window.UIInteractions = {
             winner.dynamic_state.fatigue = Math.min(100, (winner.dynamic_state.fatigue || 0) + 20);
             loser.dynamic_state.fatigue = Math.min(100, (loser.dynamic_state.fatigue || 0) + 20);
             if (!rel || rel.type === 'neutral') setRel('rivalry');
-            else if (rel.type === 'rivalry') { rel.tension = Math.min(100, (rel.tension || 30) + 20); }
+            else if (rel.type === 'rivalry' && window.RelationshipEngine) { window.RelationshipEngine.addTension(winner.id, loser.id, 20, 'Tension increased during a private sparring pit match.'); }
             const stories = [
                 `The gym doors hadn't been closed a minute before the first clinch. No instructions needed — both of them knew exactly what this was. ${winner.name} worked her way through ${loser.name}'s guard methodically, denying every escape, every reset. By the final bell ${loser.name} was breathing through her mouth, eyes down, accepting what had happened. ${winner.name} didn't say a word. She didn't need to.`,
                 `It started as sparring and became something else entirely inside the first three minutes. ${loser.name} fought back with everything — no technique, just fury — and it still wasn't enough. ${winner.name} absorbed every shot and paid it back with interest. When it was over they stood across from each other in absolute silence. The hierarchy had been settled the only honest way.`,

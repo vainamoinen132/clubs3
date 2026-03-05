@@ -52,80 +52,143 @@ window.SimEvents = {
         let playerClub = gs.clubs[gs.playerClubId];
         if (!playerClub) return;
 
-        // 15% chance of a random event each week
-        if (Math.random() < 0.15) {
-            let fighterId = playerClub.fighter_ids[Math.floor(Math.random() * playerClub.fighter_ids.length)];
-            let fighter = gs.getFighter(fighterId);
-            if (!fighter) return;
+        // 10% chance of a random event each week
+        if (Math.random() < 0.10) {
+            let possibleEvents = [];
 
-            const events = [
-                {
-                    title: "Minor Injury in Training",
-                    effect: () => { fighter.dynamic_state.fatigue += 30; fighter.dynamic_state.morale -= 10; },
-                    desc: `${fighter.name} suffered a minor tweak during sparring. Fatigue increased heavily.`
-                },
-                {
-                    title: "Viral Sensation",
-                    effect: () => { gs.fame += 1000; fighter.dynamic_state.morale += 15; },
-                    desc: `A clip of ${fighter.name} went viral on social media! Fame +1000.`
-                },
-                {
-                    title: "Locker Room Drama",
-                    effect: () => { fighter.dynamic_state.stress += 20; fighter.core_stats.composure -= 2; },
-                    desc: `${fighter.name} got into a heated argument with a teammate. Stress +20, Composure drop.`
-                },
-                {
-                    title: "Locker Room Incident",
+            // 1. Gym Equipment Failure (Needs L1/L2 Gym)
+            if (playerClub.facilities && playerClub.facilities.gym <= 2 && gs.money >= 5000) {
+                possibleEvents.push({
+                    title: "Gym Equipment Failure",
+                    weight: 10,
                     effect: () => {
-                        let potentialTargets = playerClub.fighter_ids.filter(id => id !== fighter.id);
-                        if (potentialTargets.length > 0) {
-                            let tId = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
-                            let t = gs.getFighter(tId);
-                            if (t && window.RelationshipEngine) {
-                                window.RelationshipEngine.addTension(fighter.id, t.id, 8, "Locker room incident.");
-                                fighter.dynamic_state.morale -= 5;
-                                t.dynamic_state.morale -= 5;
-                            }
-                        }
+                        gs.money -= 5000;
+                        let fId = playerClub.fighter_ids[Math.floor(Math.random() * playerClub.fighter_ids.length)];
+                        let f = gs.getFighter(fId);
+                        if (f) { f.dynamic_state.fatigue += 30; f.dynamic_state.morale -= 10; }
                     },
-                    desc: `Tension bubbles over in the locker room between ${fighter.name} and a teammate.`
-                },
-                {
-                    title: "Cross-Club Drama",
+                    desc: `A piece of aging training equipment snapped! A random fighter was bruised, and you paid $5,000 for emergency repairs.`
+                });
+            }
+
+            // 2. Veteran Mentorship
+            let veterans = playerClub.fighter_ids.map(id => gs.getFighter(id)).filter(f => f && f.age >= 30 && ((f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3) > 70);
+            let rookies = playerClub.fighter_ids.map(id => gs.getFighter(id)).filter(f => f && f.age <= 22 && ((f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3) < 65);
+            if (veterans.length > 0 && rookies.length > 0) {
+                possibleEvents.push({
+                    title: "Veteran Mentorship",
+                    weight: 15,
                     effect: () => {
-                        let otherClubs = Object.values(gs.clubs).filter(c => c.id !== playerClub.id && c.fighter_ids.length > 0);
-                        if (otherClubs.length > 0) {
-                            let oc = otherClubs[Math.floor(Math.random() * otherClubs.length)];
-                            let targetId = oc.fighter_ids[Math.floor(Math.random() * oc.fighter_ids.length)];
-                            let t = gs.getFighter(targetId);
-                            if (t && window.RelationshipEngine) {
-                                window.RelationshipEngine.addTension(fighter.id, t.id, 15, "Public confrontation on social media.");
-                                gs.fame += 250;
-                            }
-                        }
+                        let vet = veterans[Math.floor(Math.random() * veterans.length)];
+                        let rook = rookies[Math.floor(Math.random() * rookies.length)];
+                        rook.core_stats.technique = Math.min(rook.potential || 80, rook.core_stats.technique + 2);
+                        window.GameState.addNews('club', `${vet.name} took ${rook.name} under her wing this week, permanently boosting her technique.`);
                     },
-                    desc: `${fighter.name} got into a massive, highly public Twitter war with a fighter from another club! Fame +250, Tension spikes.`
+                    desc: `A veteran fighter took one of your rookies aside for specialized mentorship, permanently raising her technique!`,
+                    type: 'success'
+                });
+            }
+
+            // 3. Locker Room Clash (Egos)
+            let alphas = playerClub.fighter_ids.map(id => gs.getFighter(id)).filter(f => f && (f.personality?.archetype === 'Alpha' || (f.personality?.dominance_hunger || 0) > 75));
+            if (alphas.length >= 2) {
+                possibleEvents.push({
+                    title: "Locker Room Clash",
+                    weight: 10,
+                    effect: () => {
+                        window._pendingLockerRoomClash = [alphas[0], alphas[1]];
+                    },
+                    desc: `Two massive egos in your locker room have physically clashed over training times! You must step in and manage the situation immediately.`,
+                    type: 'danger',
+                    isInteractive: true
+                });
+            }
+
+            // 4. Sponsor's Golden Girl
+            let streakingFighters = playerClub.fighter_ids.map(id => gs.getFighter(id)).filter(f => f && (f.dynamic_state.win_streak || 0) >= 4);
+            if (streakingFighters.length > 0 && playerClub.sponsor && playerClub.sponsor !== 'none') {
+                possibleEvents.push({
+                    title: "Sponsor's Golden Girl",
+                    weight: 15,
+                    effect: () => {
+                        let f = streakingFighters[Math.floor(Math.random() * streakingFighters.length)];
+                        let bonus = Math.floor(Math.random() * 15000) + 10000;
+                        gs.money += bonus;
+                        window.GameState.addNews('finance', `Sponsor thrilled with ${f.name}'s win streak. Sent a $${bonus.toLocaleString()} bonus check!`);
+                    },
+                    desc: `Your sponsor is absolutely thrilled with your fighter's recent win streak and has cut the club a surprise bonus check!`,
+                    type: 'success'
+                });
+            }
+
+            // 5. Bad Weight Cut
+            let fightingThisWeek = playerClub.fighter_ids.map(id => gs.getFighter(id)).filter(f => {
+                if (!f) return false;
+                if (window.SimSchedule && window.SimSchedule.getCurrentWeekMatches) {
+                    let matches = window.SimSchedule.getCurrentWeekMatches();
+                    return matches.some(m => m.f1 === f.id || m.f2 === f.id);
                 }
-            ];
-
-            let ev = events[Math.floor(Math.random() * events.length)];
-            ev.effect();
-
-            // Log other events too
-            if (ev.title !== "Locker Room Incident") {
-                window.GameState.addNews('club', `${fighter.name}: ${ev.title}.`);
+                return false;
+            });
+            if (fightingThisWeek.length > 0) {
+                possibleEvents.push({
+                    title: "Brutal Weight Cut",
+                    weight: 10,
+                    effect: () => {
+                        let f = fightingThisWeek[Math.floor(Math.random() * fightingThisWeek.length)];
+                        f.dynamic_state.fatigue = Math.min(100, (f.dynamic_state.fatigue || 0) + 40);
+                    },
+                    desc: `One of your fighters mismanaged her diet and had a brutal, depleting weight cut. She will enter her match this week severely fatigued!`,
+                    type: 'danger'
+                });
             }
 
-            // Just native alert for now so player actually sees it when clicking Advance Week
-            if (ev.title !== "Locker Room Incident") {
-                setTimeout(() => {
-                    if (window.UIComponents && window.UIComponents.showModal) {
-                        window.UIComponents.showModal(ev.title, ev.desc, ev.title.includes('Injury') ? 'danger' : 'info');
+            if (possibleEvents.length > 0) {
+                // Weighted random selection
+                let totalWeight = possibleEvents.reduce((sum, e) => sum + e.weight, 0);
+                let roll = Math.random() * totalWeight;
+                let currentWeight = 0;
+                let selectedEvent = null;
+                for (let e of possibleEvents) {
+                    currentWeight += e.weight;
+                    if (roll < currentWeight) { selectedEvent = e; break; }
+                }
+
+                if (selectedEvent) {
+                    selectedEvent.effect();
+
+                    if (selectedEvent.isInteractive) {
+                        this._handleInteractiveEvent(selectedEvent);
                     } else {
-                        alert(`Dynamic Event: ${ev.title}\n\n${ev.desc}`);
+                        setTimeout(() => {
+                            if (window.UIComponents && window.UIComponents.showModal) {
+                                window.UIComponents.showModal(selectedEvent.title, selectedEvent.desc, selectedEvent.type || 'info');
+                            } else {
+                                alert(`Dynamic Event: ${selectedEvent.title}\n\n${selectedEvent.desc}`);
+                            }
+                        }, 500);
                     }
-                }, 500);
+                }
             }
+        }
+    },
+
+    _handleInteractiveEvent(ev) {
+        if (ev.title === "Locker Room Clash") {
+            let [f1, f2] = window._pendingLockerRoomClash;
+            let p = confirm(`CRISIS: ${f1.name} and ${f2.name} are screaming at each other in the gym.\n\n[OK] Side with ${f1.name} (punish ${f2.name})\n[Cancel] Side with ${f2.name} (punish ${f1.name})`);
+            if (p) {
+                f1.dynamic_state.morale = Math.min(100, (f1.dynamic_state.morale || 50) + 15);
+                f2.dynamic_state.morale = Math.max(0, (f2.dynamic_state.morale || 50) - 40);
+                f2.dynamic_state.stress = Math.min(100, (f2.dynamic_state.stress || 0) + 30);
+                alert(`You sided with ${f1.name}. ${f2.name} is furious and feels betrayed.`);
+            } else {
+                f2.dynamic_state.morale = Math.min(100, (f2.dynamic_state.morale || 50) + 15);
+                f1.dynamic_state.morale = Math.max(0, (f1.dynamic_state.morale || 50) - 40);
+                f1.dynamic_state.stress = Math.min(100, (f1.dynamic_state.stress || 0) + 30);
+                alert(`You sided with ${f2.name}. ${f1.name} is furious and feels betrayed.`);
+            }
+            window._pendingLockerRoomClash = null;
         }
     },
 

@@ -40,12 +40,13 @@ window.UISponsors = {
             tier: 'bronze',
             color: '#cd7f32',
             emoji: '💊',
-            type: 'per_match',
-            baseAmount: 5400,
+            type: 'pay_per_fight',
+            baseAmount: 2500,
+            perWin: 5500,
             durationYears: 1,
             fameRequired: 0,
             prRequired: 1,
-            desc: 'They pay you just for fighting — win or lose. Great floor income if your club fights frequently.',
+            desc: 'They pay a base fee for stepping into the ring, plus a solid bonus for winning.',
             tagline: 'Participation pays'
         },
         {
@@ -54,12 +55,13 @@ window.UISponsors = {
             tier: 'bronze',
             color: '#cd7f32',
             emoji: '🍺',
-            type: 'win_bonus',
-            baseAmount: 7500,
+            type: 'pay_per_fight',
+            baseAmount: 1500,
+            perWin: 7500,
             durationYears: 1,
             fameRequired: 0,
             prRequired: 1,
-            desc: 'Zero guaranteed money. But every win brings a solid cheque. High ceiling for hungry winning clubs.',
+            desc: 'Low base fight pay, but massive win bonuses to keep the crowd cheering.',
             tagline: 'Winners only'
         },
         {
@@ -68,12 +70,13 @@ window.UISponsors = {
             tier: 'bronze',
             color: '#cd7f32',
             emoji: '🦾',
-            type: 'per_match',
-            baseAmount: 6300,
+            type: 'pay_per_fight',
+            baseAmount: 5000,
+            perWin: 2000,
             durationYears: 1,
             fameRequired: 0,
             prRequired: 1,
-            desc: 'A rugged low-tier protective gear brand. Reliable per-match income.',
+            desc: 'A rugged low-tier protective gear brand. High base pay, low win bonus.',
             tagline: 'Built tough'
         },
         {
@@ -111,9 +114,9 @@ window.UISponsors = {
             tier: 'silver',
             color: '#aaa',
             emoji: '👊',
-            type: 'match_bonus',
+            type: 'pay_per_fight',
             baseAmount: 6600,
-            perWin: 4500,
+            perWin: 7500,
             durationYears: 1,
             fameRequired: 200,
             prRequired: 2,
@@ -126,13 +129,12 @@ window.UISponsors = {
             tier: 'silver',
             color: '#aaa',
             emoji: '💎',
-            type: 'lump_bonus',
-            baseAmount: 75000,
-            perWin: 10500,
-            durationYears: 2,
+            type: 'lump_sum',
+            baseAmount: 145000,
+            durationYears: 1,
             fameRequired: 400,
             prRequired: 2,
-            desc: 'A premium fashion house. Strong annual retainer plus serious win bonuses. 2-year deal — they want stability.',
+            desc: 'A premium fashion house. Extremely strong annual retainer for high end clubs.',
             tagline: 'Prestige brand'
         },
         {
@@ -141,8 +143,9 @@ window.UISponsors = {
             tier: 'silver',
             color: '#aaa',
             emoji: '🚛',
-            type: 'win_bonus',
-            baseAmount: 12000,
+            type: 'pay_per_fight',
+            baseAmount: 4000,
+            perWin: 12000,
             durationYears: 1,
             fameRequired: 250,
             prRequired: 2,
@@ -155,13 +158,13 @@ window.UISponsors = {
             tier: 'silver',
             color: '#aaa',
             emoji: '🍸',
-            type: 'lump_bonus',
-            baseAmount: 84000,
-            perWin: 6000,
-            durationYears: 2,
+            type: 'pay_per_fight',
+            baseAmount: 8500,
+            perWin: 8500,
+            durationYears: 1,
             fameRequired: 300,
             prRequired: 2,
-            desc: 'High-end nightlife venue. Good retainer and a tidy win bonus for successful teams.',
+            desc: 'High-end nightlife venue. Good fight fee and a tidy win bonus for successful teams.',
             tagline: 'Exclusivity'
         },
         // ── GOLD ──
@@ -172,11 +175,11 @@ window.UISponsors = {
             color: '#d4af37',
             emoji: '🌐',
             type: 'lump_sum',
-            baseAmount: 180000,
-            durationYears: 2,
+            baseAmount: 320000,
+            durationYears: 1,
             fameRequired: 700,
             prRequired: 3,
-            desc: 'A dominant combat sports broadcaster. Massive flat payout locked for 2 years — stability at the top.',
+            desc: 'A dominant combat sports broadcaster. Massive flat payout. Stability at the top.',
             tagline: 'Big league'
         },
         {
@@ -185,9 +188,10 @@ window.UISponsors = {
             tier: 'gold',
             color: '#d4af37',
             emoji: '📡',
-            type: 'per_match',
+            type: 'pay_per_fight',
             baseAmount: 15000,
-            durationYears: 2,
+            perWin: 10000,
+            durationYears: 1,
             fameRequired: 900,
             prRequired: 3,
             desc: 'Global broadcast deal that pays per fight card. High match-day income for active clubs.',
@@ -199,10 +203,10 @@ window.UISponsors = {
             tier: 'gold',
             color: '#d4af37',
             emoji: '🏋️',
-            type: 'match_bonus',
+            type: 'pay_per_fight',
             baseAmount: 11000,
-            perWin: 6000,
-            durationYears: 2,
+            perWin: 16000,
+            durationYears: 1,
             fameRequired: 1100,
             prRequired: 4,
             desc: 'Elite sports nutrition conglomerate. Per-match baseline plus a steady win bonus.',
@@ -214,13 +218,12 @@ window.UISponsors = {
             tier: 'gold',
             color: '#d4af37',
             emoji: '🤖',
-            type: 'lump_bonus',
-            baseAmount: 250000,
-            perWin: 6500,
-            durationYears: 2,
+            type: 'lump_sum',
+            baseAmount: 450000,
+            durationYears: 1,
             fameRequired: 1400,
             prRequired: 4,
-            desc: 'Cutting-edge tech firm riding the esports wave. Huge annual flat fee plus a solid win bonus. The crown jewel.',
+            desc: 'Cutting-edge tech firm riding the esports wave. Huge annual flat fee. The crown jewel.',
             tagline: 'High-tech, max reward'
         },
         {
@@ -230,8 +233,8 @@ window.UISponsors = {
             color: '#d4af37',
             emoji: '🧬',
             type: 'lump_sum',
-            baseAmount: 210000,
-            durationYears: 2,
+            baseAmount: 380000,
+            durationYears: 1,
             fameRequired: 1000,
             prRequired: 3,
             desc: 'Pioneering health research firm. Excellent guaranteed funding for prestigious clubs.',
@@ -243,10 +246,10 @@ window.UISponsors = {
             tier: 'gold',
             color: '#d4af37',
             emoji: '👟',
-            type: 'match_bonus',
-            baseAmount: 14000,
-            perWin: 9000,
-            durationYears: 2,
+            type: 'pay_per_fight',
+            baseAmount: 18000,
+            perWin: 22000,
+            durationYears: 1,
             fameRequired: 1200,
             prRequired: 4,
             desc: 'World-renowned athletic brand. Major payouts on every match and every win.',
@@ -276,7 +279,7 @@ window.UISponsors = {
                 contractBadge = `<div style="margin-left:auto; background:rgba(0,230,118,0.1); border:1px solid #00e67655; border-radius:8px; padding:0.5rem 1rem; font-size:0.9rem;">
                     ✅ Active: <strong style="color:#00e676;">${sp.name}</strong>
                     <span style="display:block; font-size:0.75rem; color:var(--text-muted); margin-top:2px;">
-                        ${contract.durationYears === 2 ? '2-Year Deal' : '1-Year Deal'} · ${seasonsleft > 0 ? `${seasonsleft} season(s) remaining` : 'Expires this season'}
+                        1-Year Deal · Expires end of season
                     </span>
                 </div>`;
             }
@@ -303,7 +306,7 @@ window.UISponsors = {
 
             ${activeSponsorId
                 ? `<div class="glass-panel" style="margin-top:2rem; padding:1.2rem 1.5rem; border-left:3px solid #00e676; font-size:0.9rem; color:var(--text-muted);">
-                    💡 <strong style="color:#fff;">Lump-sum sponsors</strong> pay at season end. <strong style="color:#fff;">Per-match &amp; win-bonus sponsors</strong> pay out immediately after each completed match.
+                    💡 <strong style="color:#fff;">Lump Sum sponsors</strong> pay securely at season end. <strong style="color:#fff;">Pay-Per-Fight sponsors</strong> pay out immediately after each completed match.
                    </div>`
                 : ''
             }
@@ -327,25 +330,17 @@ window.UISponsors = {
             gold: `<span style="background:#d4af3733; color:#d4af37; padding:2px 8px; border-radius:4px; font-size:0.75rem;">🥇 Gold</span>`
         }[sp.tier];
 
-        const durationBadge = sp.durationYears === 2
-            ? `<span style="background:rgba(168,85,247,0.15); color:#a855f7; padding:2px 8px; border-radius:4px; font-size:0.75rem;">📅 2-Year Deal</span>`
-            : `<span style="background:rgba(0,150,255,0.12); color:#4fc3f7; padding:2px 8px; border-radius:4px; font-size:0.75rem;">📅 1-Year Deal</span>`;
+        const durationBadge = `<span style="background:rgba(0,150,255,0.12); color:#4fc3f7; padding:2px 8px; border-radius:4px; font-size:0.75rem;">📅 1-Year Deal</span>`;
 
         const typeLabel = {
-            lump_sum: '📦 Lump Sum (annual)',
-            per_match: '⚔️ Per Match Played',
-            win_bonus: '🏆 Per Win Only',
-            lump_bonus: '📦+🏆 Lump + Win Bonus',
-            match_bonus: '⚔️+🏆 Per Match + Win Bonus'
+            lump_sum: '📦 Guaranteed Lump Sum',
+            pay_per_fight: '⚔️ Pay-Per-Fight + Win Bonus'
         }[sp.type];
 
         // Payout breakdown hint
         let breakdown = '';
-        if (sp.type === 'lump_bonus') breakdown = `<span style="font-size:0.72rem; color:var(--text-muted);">$${sp.baseAmount.toLocaleString()} flat + $${sp.perWin.toLocaleString()}/win</span>`;
-        if (sp.type === 'match_bonus') breakdown = `<span style="font-size:0.72rem; color:var(--text-muted);">$${sp.baseAmount.toLocaleString()}/match + $${sp.perWin.toLocaleString()}/win</span>`;
-        if (sp.type === 'per_match') breakdown = `<span style="font-size:0.72rem; color:var(--text-muted);">$${sp.baseAmount.toLocaleString()} per match</span>`;
-        if (sp.type === 'win_bonus') breakdown = `<span style="font-size:0.72rem; color:var(--text-muted);">$${sp.baseAmount.toLocaleString()} per win</span>`;
-        if (sp.type === 'lump_sum') breakdown = `<span style="font-size:0.72rem; color:var(--text-muted);">$${sp.baseAmount.toLocaleString()} guaranteed</span>`;
+        if (sp.type === 'pay_per_fight') breakdown = `<span style="font-size:0.72rem; color:var(--text-muted);">$${sp.baseAmount.toLocaleString()} per match + $${sp.perWin.toLocaleString()}/win</span>`;
+        if (sp.type === 'lump_sum') breakdown = `<span style="font-size:0.72rem; color:var(--text-muted);">$${sp.baseAmount.toLocaleString()} guaranteed annually</span>`;
 
         let lockReason = '';
         if (fame < sp.fameRequired) lockReason += `⭐ Requires ${sp.fameRequired.toLocaleString()} Fame (you: ${fame.toLocaleString()}). `;
@@ -441,17 +436,13 @@ window.UISponsors = {
         const prBonus = 1 + ((club.facilities?.pr || 1) - 1) * 0.25;
 
         // Only pay the FLAT/LUMP portion at season end.
-        // Per-match and per-win portions are already paid in real-time via collectMatchPayout().
+        // Pay-per-fight sponsors are handled in real-time via collectMatchPayout().
         let payout = 0;
         let desc = '';
         if (sp.type === 'lump_sum') {
             payout = Math.round(sp.baseAmount * prBonus);
-            desc = `annual flat`;
-        } else if (sp.type === 'lump_bonus') {
-            payout = Math.round(sp.baseAmount * prBonus);
             desc = `annual retainer`;
         }
-        // per_match, win_bonus, match_bonus — no lump component, nothing to pay here
 
         if (payout > 0) {
             gs.money += payout;
@@ -490,31 +481,14 @@ window.UISponsors = {
         let desc = '';
 
         switch (sp.type) {
-            case 'per_match':
-                payout = Math.round(sp.baseAmount * prBonus);
-                desc = `match fee`;
-                break;
-            case 'win_bonus':
-                if (playerWon) {
-                    payout = Math.round(sp.baseAmount * prBonus);
-                    desc = `win bonus`;
-                }
-                break;
-            case 'match_bonus':
-                // Per-match base always; win portion only if won
+            case 'pay_per_fight':
+                // Base paid simply for fighting
                 payout = Math.round(sp.baseAmount * prBonus);
                 desc = `match fee`;
                 if (playerWon) {
                     const winPart = Math.round(sp.perWin * prBonus);
                     payout += winPart;
                     desc = `match fee + win bonus`;
-                }
-                break;
-            case 'lump_bonus':
-                // Only the win-bonus portion fires per match
-                if (playerWon) {
-                    payout = Math.round(sp.perWin * prBonus);
-                    desc = `win bonus`;
                 }
                 break;
             // lump_sum: nothing fires per match
@@ -537,14 +511,8 @@ window.UISponsors = {
 
         switch (sp.type) {
             case 'lump_sum':
-                return green(fmt(sp.baseAmount), '/ season — paid at season end');
-            case 'per_match':
-                return green(fmt(sp.baseAmount), '/ match — paid right after each fight');
-            case 'win_bonus':
-                return green(fmt(sp.baseAmount), '/ win — paid right after each victory');
-            case 'lump_bonus':
-                return green(fmt(sp.baseAmount), '/ season — lump at season end') + gold(fmt(sp.perWin), '/ win — paid after each victory');
-            case 'match_bonus':
+                return green(fmt(sp.baseAmount), '/ season — guaranteed payout at season end');
+            case 'pay_per_fight':
                 return green(fmt(sp.baseAmount), '/ match — paid after each fight') + gold(fmt(sp.perWin), '/ win — paid after each victory');
             default:
                 return green(fmt(sp.baseAmount), '');
@@ -557,13 +525,7 @@ window.UISponsors = {
         switch (sp.type) {
             case 'lump_sum':
                 return Math.round(sp.baseAmount * prBonus);
-            case 'per_match':
-                return Math.round(sp.baseAmount * matchesPlayed * prBonus);
-            case 'win_bonus':
-                return Math.round(sp.baseAmount * wonThisSeason * prBonus);
-            case 'lump_bonus':
-                return Math.round((sp.baseAmount + sp.perWin * wonThisSeason) * prBonus);
-            case 'match_bonus':
+            case 'pay_per_fight':
                 return Math.round((sp.baseAmount * matchesPlayed + sp.perWin * wonThisSeason) * prBonus);
             default:
                 return sp.baseAmount;
@@ -575,8 +537,8 @@ window.UISponsors = {
         let wins = 0;
         gs.schedule.forEach(m => {
             if (m.winnerId && (m.home === club.id || m.away === club.id)) {
-                const winnerFighter = gs.getFighter(m.winnerId);
-                if (winnerFighter && winnerFighter.club_id === club.id) wins++;
+                let winClubId = (m.winnerId === m.homeFighter) ? m.home : m.away;
+                if (winClubId === club.id) wins++;
             }
         });
         return wins;

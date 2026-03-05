@@ -23,17 +23,25 @@ window.UIClubs = {
     },
 
     _getClubRecord(club) {
-        // Calculate record from the schedule if not pre-computed
+        // Calculate record from the standings if possible
         const gs = window.GameState;
         let w = 0, l = 0;
-        if (club.record) {
-            w = club.record.w || 0;
-            l = club.record.l || 0;
+
+        let st = gs.leagueStandings ? gs.leagueStandings.find(s => s.id === club.id) : null;
+        if (st) {
+            w = st.w || 0;
+            l = st.l || 0;
         } else {
+            // Fallback to schedule iteration just in case
             gs.schedule.forEach(match => {
-                if (!match.played || !match.winnerId) return;
+                if (!match.played && !match.winnerId) return;
+
+                // match.winnerId is the FIGHTER ID. We need to find which CLUB won.
+                let winClubId = (match.winnerId === match.homeFighter) ? match.home : match.away;
+                if (!winClubId) return; // If ghost match didn't assign fighters properly
+
                 if (match.home === club.id || match.away === club.id) {
-                    if (match.winnerId === club.id) w++;
+                    if (winClubId === club.id) w++;
                     else l++;
                 }
             });
@@ -95,8 +103,9 @@ window.UIClubs = {
             const isPlayer = club.id === gs.playerClubId;
             const record = this._getClubRecord(club);
             const facilities = this._getClubFacilities(club);
-            const money = club.money !== undefined ? club.money : (isPlayer ? gs.money : null);
+            const money = isPlayer ? gs.money : (club.money !== undefined ? club.money : null);
             const location = club.location || '';
+            const championships = club.championships || 0;
 
             let topFighterHtml = '<span class="text-muted">No notable fighters</span>';
             if (club.fighter_ids && club.fighter_ids.length > 0) {
@@ -144,7 +153,7 @@ window.UIClubs = {
                             <td style="padding: 0.8rem;">${statDisplay}</td>
                             <td style="padding: 0.8rem; font-size:0.85rem;">${salary}</td>
                             <td style="padding: 0.8rem;">
-                                ${!isPlayer ? `<button class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; background:#555;" onclick="window.Router.loadRoute('transfers')">Scout / Bid</button>` : '<span style="color:#00e676; font-size:0.8rem;">YOUR FIGHTER</span>'}
+                                ${!isPlayer ? `<button class="btn-primary" style="padding: 0.3rem 0.6rem; font-size: 0.75rem; background:#555;" onclick="window.Router.loadRoute('transfers', { tab: 'scout', targetId: '${f.id}' })">Scout / Bid</button>` : '<span style="color:#00e676; font-size:0.8rem;">YOUR FIGHTER</span>'}
                             </td>
                         </tr>
                     `;
@@ -183,6 +192,7 @@ window.UIClubs = {
                         </div>
                         <div style="text-align: right; font-size: 0.9rem; display:flex; flex-direction:column; gap:4px; align-items:flex-end;">
                             <div>Record: <strong style="color:#fff; font-size:1.1rem;">${record.w}W – ${record.l}L</strong></div>
+                            <div>Championships: <strong style="color:var(--accent); font-size:1.1rem;">${championships}</strong></div>
                             ${moneyHtml}
                             <div style="font-size:0.8rem; color:#aaa;">Home Edge: <strong style="color:#ddd;">${this._getHomeAdvantageLabel(club.home_advantage)}</strong></div>
                             <div>Star: ${topFighterHtml}</div>

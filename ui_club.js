@@ -38,6 +38,15 @@ window.UIClub = {
                 </div>
             `;
         }
+        else if (gs.week > 14) {
+            matchHtml = `
+                <div class="glass-panel" style="padding: 1rem; border-left: 4px solid #3b82f6; background: rgba(59, 130, 246, 0.05);">
+                    <h3 style="margin-bottom: 0.5rem; font-family: var(--font-heading); color:#3b82f6;">Offseason Training</h3>
+                    <p style="font-size: 1.2rem;">Official season matches have concluded. Focus on training, resting, and finalizing roster moves before the next season begins.</p>
+                    <button class="btn-primary" style="margin-top: 1rem; background:#3b82f6;" onclick="document.getElementById('btn-advance-week').click()">Advance Offseason Week</button>
+                </div>
+            `;
+        }
         else if (nextMatch) {
             const oppId = nextMatch.home === club.id ? nextMatch.away : nextMatch.home;
             const opp = gs.getClub(oppId) || { name: 'Unknown' };
@@ -215,10 +224,19 @@ window.UIClub = {
 
             btn.onclick = () => {
                 // Apply effects
-                let r1 = f1.dynamic_state.relationships[f2.id];
-                let newType = choice.effect(r1.type);
-                f1.dynamic_state.relationships[f2.id].type = newType;
-                f2.dynamic_state.relationships[f1.id].type = newType;
+                let newType = 'neutral';
+                if (window.RelationshipEngine) {
+                    let rel = window.RelationshipEngine.getRelationship(f1.id, f2.id);
+                    newType = choice.effect(rel.type);
+
+                    let oldType = rel.type;
+                    rel.type = newType;
+                    if (!rel.history) rel.history = [];
+                    rel.history.push(`Milestone effect: ${oldType.toUpperCase()} ➔ ${newType.toUpperCase()}`);
+
+                    window.RelationshipEngine._applyExclusivity(f1, f2, rel);
+                    window.RelationshipEngine._applyExclusivity(f2, f1, rel);
+                }
 
                 if (choice.morale) { f1.dynamic_state.morale += choice.morale; f2.dynamic_state.morale += choice.morale; }
                 if (choice.stress) { f1.dynamic_state.stress += choice.stress; f2.dynamic_state.stress += choice.stress; }
@@ -245,60 +263,12 @@ window.UIClub = {
     },
 
     _renderPoachingOverlay(container) {
+        // LEGACY FALLBACK: In case a save file still has pendingPoachEvents queued from older versions,
+        // silently clear them so the player doesn't get soft-locked on an empty screen.
         const gs = window.GameState;
-        let ev = gs.pendingPoachEvents[0];
-        let f = gs.getFighter(ev.fighterId);
-        let club = gs.getClub(gs.playerClubId);
-        let bidder = gs.getClub(ev.bidderId);
-
-        container.innerHTML = `
-            <div style="position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:9999; display:flex; align-items:center; justify-content:center; padding:2rem; overflow-y: auto;">
-                <div class="glass-panel" style="max-width:600px; width:100%; padding:3rem; text-align:center; border: 2px solid #ff5252; box-shadow: 0 0 30px rgba(255, 82, 82, 0.4); max-height: 90vh; overflow-y: auto; display: flex; flex-direction: column;">
-                    <h2 style="color:#ff5252; margin-bottom:1rem; text-transform:uppercase; font-size:2rem; flex-shrink: 0;">Hostile Takeover Bid!</h2>
-                    <p style="font-size:1.2rem; margin-bottom:2rem;"><strong style="color:${bidder.color}">${bidder.name}</strong> has activated the buyout clause for your star fighter <strong>${f.name}</strong>!</p>
-                    
-                    <div style="background:rgba(0,0,0,0.5); padding:1.5rem; border-radius:8px; margin-bottom:2rem;">
-                        <p style="font-size:1.3rem; margin-top:10px;">Transfer Fee Offered: <strong style="color:#00e676;">+$${ev.transferFee.toLocaleString()}</strong></p>
-                    </div>
-
-                    <p style="margin-bottom:2rem;">You can accept this massive cash injection and let her go, or you can invoke your Manager's Right of Refusal to block the transfer by matching the buyout fee yourself to renegotiate her contract.</p>
-
-                    <div style="display:flex; justify-content:center; gap:20px;">
-                        <button class="btn-primary" id="btn-sell-player" style="background:#00e676; padding: 1rem 2rem;">Sell Fighter (+$${ev.transferFee.toLocaleString()})</button>
-                        <button class="btn-secondary" id="btn-block-transfer" style="border:1px solid #ff5252; padding: 1rem 2rem;">Block Transfer (-$${ev.transferFee.toLocaleString()})</button>
-                    </div>
-                    <div id="poach-result" style="margin-top: 1.5rem; font-weight: bold;"></div>
-                </div>
-            </div>
-        `;
-
-        document.getElementById('btn-sell-player').onclick = () => {
-            gs.money += ev.transferFee;
-            club.fighter_ids = club.fighter_ids.filter(id => id !== f.id);
-            f.club_id = bidder.id;
-            bidder.fighter_ids.push(f.id);
-            // AI club generates a new contract for her
-            f.contract = { salary: f.contract.salary * 2, seasons_remaining: 3 };
-
-            gs.pendingPoachEvents.shift();
-            gs.addNews('transfer', `BLOCKBUSTER: ${bidder.name} bought out ${f.name}'s contract from ${club.name} for $${ev.transferFee.toLocaleString()}!`);
-            window.Router.loadRoute('club');
-        };
-
-        document.getElementById('btn-block-transfer').onclick = () => {
-            let res = document.getElementById('poach-result');
-            if (gs.money < ev.transferFee) {
-                res.innerHTML = `<span style="color:#ff5252;">You don't have enough liquid cash to block this hostile takeover! You need $${ev.transferFee.toLocaleString()} to match the buyout.</span>`;
-            } else {
-                gs.money -= ev.transferFee;
-                gs.pendingPoachEvents.shift();
-
-                f.dynamic_state.morale = Math.max(0, f.dynamic_state.morale - 25);
-                gs.addNews('transfer', `${club.name} blocked a massive hostile takeover bid for ${f.name} from ${bidder.name}.`);
-
-                res.innerHTML = `<span style="color:#00e676;">Transfer Blocked! ${f.name} stays, but she is furious about missing out on the massive payday. Morale -25.</span>`;
-                setTimeout(() => { window.Router.loadRoute('club'); }, 3000);
-            }
-        };
+        if (gs.pendingPoachEvents && gs.pendingPoachEvents.length > 0) {
+            gs.pendingPoachEvents = [];
+        }
+        window.Router.loadRoute('club');
     }
 };

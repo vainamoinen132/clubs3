@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ui_match.js
  * Real-time narrative display connecting sim_engine to the DOM.
  */
@@ -22,11 +22,67 @@ window.UIMatch = {
             return;
         }
 
-        let oppClub = gs.getClub(targetMatch.away === playerClub.id ? targetMatch.home : targetMatch.away);
+        let oppClubId = targetMatch.away === gs.playerClubId ? targetMatch.home : targetMatch.away;
+        let oppClub = gs.getClub(oppClubId) || { name: 'Independent', color: '#888', fighter_ids: [] };
 
-        // Pick AI fighter based on fatigue
-        let oppFighterId = oppClub.fighter_ids.reduce((a, b) => gs.getFighter(a).dynamic_state?.fatigue < gs.getFighter(b).dynamic_state?.fatigue ? a : b);
-        let oppFighter = gs.getFighter(oppFighterId);
+        // --- SMARTER AI SELECTION (Mirrors ai_engine.js ghost match logic) ---
+        const getSmartFighter = (club, matchStyle) => {
+            if (!club || !club.fighter_ids || club.fighter_ids.length === 0) return null;
+            let available = club.fighter_ids.map(id => gs.getFighter(id)).filter(f => {
+                if (!f) return false;
+                if (f.dynamic_state.injuries && f.dynamic_state.injuries.length > 0) return false;
+                if (f.dynamic_state.fatigue > 80) return false;
+                return true;
+            });
+
+            // Fallback: if everyone is injured/exhausted, use anyone with lowest fatigue
+            if (available.length === 0) available = club.fighter_ids.map(id => gs.getFighter(id)).filter(Boolean);
+
+            // CRITICAL FAILSAFE: If club is STILL empty (Roster Guard failed or just sold), generate a temp Local Contender
+            if (available.length === 0) {
+                console.warn(`CRITICAL: Club ${club.name} has 0 fighters. Generating temporary Local Contender.`);
+                const n = (typeof window.GameNames !== 'undefined') ? window.GameNames.generateName() : "Local Contender";
+                const base = 48 + Math.random() * 5;
+                const tempF = {
+                    id: 'temp_' + Date.now(),
+                    name: n + " (Local)",
+                    avatar: `generic/${Math.floor(Math.random() * 400) + 1}.png`,
+                    age: 18 + Math.floor(Math.random() * 10),
+                    core_stats: { power: Math.round(base), technique: Math.round(base), speed: Math.round(base), control: 40, endurance: 40, resilience: 40, aggression: 50, composure: 40, presence: 30 },
+                    style_affinities: { [matchStyle]: 60 },
+                    personality: { archetype: 'Underdog' },
+                    dynamic_state: { fatigue: 0, stress: 0, injuries: [], morale: 60, wins: 0, losses: 0 }
+                };
+                return tempF;
+            }
+
+            const scoreFighter = (f) => {
+                let score = 0;
+                let trueOvr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed + f.core_stats.control + f.core_stats.endurance + f.core_stats.resilience + f.core_stats.aggression + f.core_stats.composure + f.core_stats.presence) / 9;
+                score += trueOvr * 1.0;
+
+                const styleMap = { 'boxing': 'boxing', 'naked_wrestling': 'naked_wrestling', 'catfight': 'catfight', 'sexfight': 'sexfight', 'kickboxing': 'kickboxing', 'submission': 'submission' };
+                let affinityKey = styleMap[matchStyle];
+                let affinity = (affinityKey && f.style_affinities) ? (f.style_affinities[affinityKey] || 50) : 50;
+
+                score += affinity * 0.6;
+                if (affinity >= 90) score += (trueOvr * 0.3);
+
+                score -= (f.dynamic_state.fatigue || 0) * 0.6;
+                score += Math.min((f.dynamic_state.win_streak || 0) * 2, 10);
+                if (f.dynamic_state.ego === 'High') score += 5;
+
+                return score;
+            };
+
+            if (!available || available.length === 0) return null;
+            available.sort((a, b) => scoreFighter(b) - scoreFighter(a));
+            return available[0];
+        };
+
+        let oppFighter = getSmartFighter(oppClub, targetMatch.style);
+        let oppFighterId = oppFighter ? oppFighter.id : null;
+        // ---------------------------------------------------------------------
 
         // Pre-Match Fighter Selection Screen
         let rosterHtml = playerClub.fighter_ids.map(fId => {
@@ -43,12 +99,18 @@ window.UIMatch = {
                 `window.UIMatch.startMatchWithSelections('${fId}', '${oppFighterId}', '${targetMatch.id}')`;
 
             let relHtml = '';
-            if (f.dynamic_state.relationships && f.dynamic_state.relationships[oppFighterId]) {
-                let relType = f.dynamic_state.relationships[oppFighterId];
-                let bg = relType === 'Lover' ? 'var(--pink-hl)' : (relType === 'Bitter Rival' ? 'var(--danger)' : 'var(--accent)');
-                let displayType = relType.type ? relType.type.replace('_', ' ') : relType; // accommodate both formats
-                relHtml = `<span style="font-size: 0.75rem; background: ${bg}; color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 10px; font-weight: bold; align-self: center;">${displayType}</span>`;
+            if (window.RelationshipEngine) {
+                let relData = window.RelationshipEngine.getRelationship(fId, oppFighterId);
+                if (relData && relData.type !== 'neutral') {
+                    let relType = relData.type;
+                    let bg = (relType === 'lovers' || relType === 'committed' || relType === 'obsession') ? 'var(--pink-hl)' :
+                        (relType === 'bitter_rivals' || relType === 'rivalry' ? 'var(--danger)' : 'var(--accent)');
+                    let displayType = window.UIRelationships ? window.UIRelationships.getRelLabel(relType) : relType.replace(/_/g, ' ');
+                    relHtml = `<span style="font-size: 0.75rem; background: ${bg}; color: #fff; padding: 2px 6px; border-radius: 4px; margin-left: 10px; font-weight: bold; align-self: center;">${displayType}</span>`;
+                }
             }
+
+            const ovr = Math.floor((f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3);
 
             return `
                 <div class="glass-panel hoverable" style="padding: 1rem; margin-bottom: 0.5rem; cursor: ${isInjured ? 'not-allowed' : 'pointer'}; opacity: ${opacity};" onclick="${clickAction}">
@@ -56,6 +118,7 @@ window.UIMatch = {
                         <div>
                             <div style="display:flex; align-items:center;">
                                 <strong style="display:block; margin-bottom:0.2rem;">${f.name} ${isInjured ? '<span style="color:var(--danger); font-size:0.8rem;">(INJ)</span>' : ''}</strong>
+                                <span class="tag" style="background:var(--accent); color:#fff; font-size:0.7rem; margin-left:8px;">OVR ${ovr}</span>
                                 ${relHtml}
                             </div>
                             <div style="font-size: 0.85rem; color: var(--accent);">Best Style: ${bestStyleStr}</div>
@@ -78,15 +141,29 @@ window.UIMatch = {
                 <div>
                     <h3 class="font-outfit" style="margin-bottom: 1rem; color: #fff; text-shadow: 0 0 5px ${oppClub.color}">Opponent</h3>
                     <div class="glass-panel" style="padding: 1rem; border-left: 4px solid ${oppClub.color}">
+                        ${oppFighter ? `
                         <div style="display: flex; gap: 1rem; align-items: center;">
                             <img src="${oppFighter.avatar ? 'assets/portraits/' + oppFighter.avatar : 'assets/portraits/' + oppFighter.name.toLowerCase() + '.png'}" style="width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 2px solid ${oppClub.color};" onerror="this.onerror=null; this.src='${fallbackSvgOpp}';" />
                             <div>
                                 <h4>${oppFighter.name}</h4>
+                                <div style="margin-top:0.3rem;"><span class="tag" style="background:${oppClub.color}; color:#fff; font-size:0.7rem;">OVR ${Math.floor((oppFighter.core_stats.power + oppFighter.core_stats.technique + oppFighter.core_stats.speed) / 3)}</span></div>
                                 <p class="text-muted" style="margin-top: 0.5rem;">Archetype: ${oppFighter.personality.archetype}</p>
                                 <p class="text-muted">Style: ${targetMatch.style.replace('_', ' ')}</p>
                             </div>
                         </div>
+                        ` : `
+                        <div style="text-align:center; padding: 1rem;">
+                            <div style="font-size: 2rem; margin-bottom: 0.5rem;">🚨</div>
+                            <div class="text-muted" style="margin-bottom:1rem;">This club has no fighters and cannot compete.</div>
+                            <button class="btn-primary" style="width:100%;" onclick="window.UIMatch.claimForfeitWin('${targetMatch.id}')">CLAIM FORFEIT WIN (5-0)</button>
+                        </div>
+                        `}
                     </div>
+                    ${(oppFighter && oppFighter.id.startsWith('temp_')) ? `
+                        <div style="margin-top: 1rem; text-align:right;">
+                            <button class="btn-outline" style="font-size:0.8rem; padding: 4px 8px;" onclick="window.UIMatch.claimForfeitWin('${targetMatch.id}')">Or Claim Forfeit (5-0)</button>
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
@@ -332,17 +409,24 @@ window.UIMatch = {
         const f1 = gs.getFighter(isHome ? playerFighterId : oppFighterId);
         const f2 = gs.getFighter(isHome ? oppFighterId : playerFighterId);
 
+        if (!f1 || !f2) {
+            console.error("Match cannot start: missing fighter(s)", { f1, f2, p: playerFighterId, o: oppFighterId });
+            alert("Critical bug: One of the fighters for this match is missing or invalid. Check the console for details.");
+            window.router.loadRoute('club');
+            return;
+        }
+
         this.currentSim = new MatchSimulation(f1, f2, targetMatch.style, true); // true = player involvement
         this.currentSim.startMatch();
         this._crowdFrenzyFired = false;
         this._crowdHotFired = false;
 
-        const playerClub = gs.getClub(f1.club_id);
-        const oppClub = gs.getClub(f2.club_id);
+        const playerClub = gs.getClub(f1.club_id) || { name: 'Independent', color: '#888' };
+        const oppClub = gs.getClub(f2.club_id) || { name: 'Independent', color: '#888' };
         const container = document.getElementById('main-view') || document.body;
 
         let prepTalk = "";
-        let r = f1.dynamic_state.relationships && f1.dynamic_state.relationships[f2.id];
+        let r = window.RelationshipEngine ? window.RelationshipEngine.getRelationship(f1.id, f2.id) : null;
         if (r && (r.type === 'bitter_rivals' || r.type === 'obsession')) {
             let quoteHtml = window.NarrativeGenerator.generateDialogue(f1, true);
             prepTalk = `<div style="background: rgba(255,0,0,0.2); border-left: 4px solid red; padding: 1rem; margin-bottom: 1.5rem; border-radius: 4px;"><strong>Pre-Match Trash Talk:</strong><br>${quoteHtml}</div>`;
@@ -364,6 +448,7 @@ window.UIMatch = {
                     <img src="${img1Src}" style="width: 90px; height: 90px; object-fit: cover; border-radius: 50%; border: 3px solid ${playerClub.color}; box-shadow: 0 0 10px ${playerClub.color};" onerror="this.onerror=null; this.src='${fallbackSvg}';" />
                     <div>
                         <h2 class="font-outfit" style="color:#fff; text-shadow: 0 0 10px ${playerClub.color}; margin-bottom: 0;">${f1.name}</h2>
+                        <div style="font-size:0.8rem; color:var(--accent); font-weight:bold; margin-top:0.2rem;">OVR ${Math.floor((f1.core_stats.power + f1.core_stats.technique + f1.core_stats.speed) / 3)}</div>
                         <div style="margin-top: 0.5rem;">${window.UIComponents.createClubBadge(playerClub)}</div>
                     </div>
                 </div>
@@ -377,6 +462,7 @@ window.UIMatch = {
                     <img src="${img2Src}" style="width: 90px; height: 90px; object-fit: cover; border-radius: 50%; border: 3px solid ${oppClub.color}; box-shadow: 0 0 10px ${oppClub.color};" onerror="this.onerror=null; this.src='${fallbackSvg}';" />
                     <div>
                         <h2 class="font-outfit" style="color:#fff; text-shadow: 0 0 10px ${oppClub.color}; margin-bottom: 0;">${f2.name}</h2>
+                        <div style="font-size:0.8rem; color:var(--accent); font-weight:bold; margin-top:0.2rem;">OVR ${Math.floor((f2.core_stats.power + f2.core_stats.technique + f2.core_stats.speed) / 3)}</div>
                         <div style="margin-top: 0.5rem;">${window.UIComponents.createClubBadge(oppClub)}</div>
                     </div>
                 </div>
@@ -648,15 +734,20 @@ window.UIMatch = {
     },
 
     runPostMatch() {
+        let btn = document.getElementById('post-match-btn');
+        if (btn) btn.disabled = true;
+
         let winner = this.currentSim.winner;
         let loser = winner === this.currentSim.f1 ? this.currentSim.f2 : this.currentSim.f1;
 
         if (this.activeUndergroundContext) {
             if (this.activeUndergroundContext.type === 'midseasoncup') {
                 if (window.SimEvents) {
-                    let wOrig = window.GameState.getFighter(winner.id);
-                    let lOrig = window.GameState.getFighter(loser.id);
-                    let roundDiff = Math.abs(this.currentSim.roundsWon.f1 - this.currentSim.roundsWon.f2);
+                    let wOrig = window.GameState.getFighter(winner.id) || winner;
+                    let lOrig = window.GameState.getFighter(loser.id) || loser;
+                    let r1 = this.currentSim.roundsWon ? this.currentSim.roundsWon.f1 : this.currentSim.f1Rounds;
+                    let r2 = this.currentSim.roundsWon ? this.currentSim.roundsWon.f2 : this.currentSim.f2Rounds;
+                    let roundDiff = Math.abs((r1 || 0) - (r2 || 0));
                     window.SimEvents.processPostMatch(wOrig.id, lOrig.id, roundDiff, this.currentSim.style);
                 }
 
@@ -681,10 +772,13 @@ window.UIMatch = {
             return;
         }
 
-        let wOrig = window.GameState.getFighter(winner.id);
-        let lOrig = window.GameState.getFighter(loser.id);
+        let wOrig = window.GameState.getFighter(winner.id) || winner;
+        let lOrig = window.GameState.getFighter(loser.id) || loser;
 
-        let roundDiff = Math.abs(this.currentSim.f1Rounds - this.currentSim.f2Rounds);
+        let r1 = this.currentSim.roundsWon ? this.currentSim.roundsWon.f1 : this.currentSim.f1Rounds;
+        let r2 = this.currentSim.roundsWon ? this.currentSim.roundsWon.f2 : this.currentSim.f2Rounds;
+        let roundDiff = Math.abs((r1 || 0) - (r2 || 0));
+
         if (window.SimEvents) {
             window.SimEvents.processPostMatch(wOrig.id, lOrig.id, roundDiff, this.currentSim.style);
         }
@@ -778,39 +872,65 @@ window.UIMatch = {
         feedContainer.innerHTML = '';
         this._appendLog(punishHtml + mdHtml);
 
-        let btn = document.getElementById('post-match-btn');
-        btn.innerText = "Finish & Advance Week";
-        btn.onclick = () => {
-            if (window.AIEngine) { window.AIEngine.processWeek(); }
-            window.Router.loadRoute('club');
-        };
+        let finalBtn = document.getElementById('post-match-btn');
+        if (finalBtn) {
+            finalBtn.innerText = "Finish & Advance Week";
+            finalBtn.disabled = false;
+            finalBtn.onclick = () => {
+                if (window.AIEngine) { window.AIEngine.processWeek(); }
+                window.Router.loadRoute('club');
+            };
+        }
     },
 
     _updateRelationship(f1, f2, type) {
-        const re = window.RelationshipEngine;
-        if (!re) return null;
+        if (!window.RelationshipEngine) return null;
+        const currentRel = window.RelationshipEngine.getRelationship(f1.id, f2.id);
+        if (currentRel.type === type) return null;
 
-        const r1 = re._getOrInitRelation(f1, f2.id);
-        if (r1.type === type) return null; // No change
+        currentRel.type = type;
+        currentRel.tension = Math.min(100, currentRel.tension + 10);
+        if (!currentRel.history) currentRel.history = [];
+        currentRel.history.push(`Their dynamic fundamentally shifted after the match.`);
 
-        // Handle romantic bonding via engine so primary_partner_id is set correctly
-        if (type === 'committed' || type === 'obsession') {
-            re._formCouple(f1, f2);
-        } else if (type === 'best_friends') {
-            re._applyBestFriend(f1, f2);
-            const r1b = re._getOrInitRelation(f1, f2.id);
-            const r2b = re._getOrInitRelation(f2, f1.id);
-            r1b.type = 'best_friends'; r2b.type = 'best_friends';
-        } else {
-            // Set type directly for non-exclusive types (rivalry, bitter_rivals etc.)
-            const r2 = re._getOrInitRelation(f2, f1.id);
-            r1.type = type; r2.type = type;
-            // If breaking romantic bond, clear partner IDs
-            if (type === 'bitter_rivals' || type === 'rivalry') {
-                if (f1.dynamic_state.primary_partner_id === f2.id) re._breakUpCouple(f1, f2);
-            }
+        window.RelationshipEngine._applyExclusivity(f1, f2, currentRel);
+        window.RelationshipEngine._applyExclusivity(f2, f1, currentRel);
+
+        // Use a generic label or fallback to type string
+        const typeLabel = window.UIRelationships?.getRelLabel ? window.UIRelationships.getRelLabel(type) : type.replace(/_/g, ' ');
+        return `${f1.name} and ${f2.name}: ${typeLabel}.`;
+    }
+    ,
+    claimForfeitWin(matchId) {
+        const gs = window.GameState;
+        let targetMatch = gs.schedule.find(m => m.id === matchId);
+        if (!targetMatch) return;
+
+        let playerClub = gs.getClub(gs.playerClubId);
+        if (!playerClub || playerClub.fighter_ids.length === 0) {
+            alert("You must have at least one fighter to claim a win.");
+            return;
         }
 
-        return `${f1.name} and ${f2.name}: ${window.UIRelationships?.getRelLabel(type) || type}.`;
+        let fId = playerClub.fighter_ids[0];
+        let f = gs.getFighter(fId);
+
+        if (!confirm(`Claim 5-0 Forfeit Win for ${f.name}? This will count as a full victory.`)) return;
+
+        targetMatch.winnerId = f.id;
+        targetMatch.rounds = { f1: 5, f2: 0 };
+        targetMatch.homeFighter = (targetMatch.home === gs.playerClubId) ? f.id : 'forfeit_placeholder';
+        targetMatch.awayFighter = (targetMatch.away === gs.playerClubId) ? f.id : 'forfeit_placeholder';
+
+        if (window.SimEvents) {
+            window.SimEvents.processPostMatch(f.id, 'forfeit_placeholder', 5, targetMatch.style);
+        }
+
+        if (window.UISponsors) {
+            window.UISponsors.collectMatchPayout(targetMatch, true);
+        }
+
+        gs.addNews('global', `🏆 FORFEIT: ${f.name} awarded a 5-0 win as the opponent failed to field a roster.`);
+        window.router.loadRoute('club');
     }
 };

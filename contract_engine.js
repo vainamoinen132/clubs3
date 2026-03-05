@@ -32,11 +32,52 @@ window.ContractEngine = {
     },
 
     getPerceivedWorth(fighter) {
-        let ovr = Math.round((fighter.core_stats.power + fighter.core_stats.technique + fighter.core_stats.speed) / 3);
-        let fameScore = fighter.dynamic_state.fame || (ovr * 15);
+        // 1. Calculate True OVR across all 9 core stats for accurate scaling
+        const cs = fighter.core_stats;
+        const totalStats = cs.power + cs.technique + cs.speed + cs.control + cs.endurance + cs.resilience + cs.aggression + cs.composure + cs.presence;
+        const trueOvr = totalStats / 9;
+
+        // 2. Base Market Curve (Flattened to stop extreme 90+ OVR salaries)
+        // Previous formula `(trueOvr - 50) * 350` ballooned top-tiers to 300k+. 
+        let baseValue = 5000;
+        if (trueOvr > 50) {
+            let pointsAbove50 = trueOvr - 50;
+            // First 20 points (50 to 70 OVR): $200 per point
+            let tier1 = Math.min(20, pointsAbove50) * 200;
+            // Next 10 points (70 to 80 OVR): $400 per point
+            let tier2 = Math.max(0, Math.min(10, pointsAbove50 - 20)) * 400;
+            // Final points (80+ OVR): $800 per point
+            let tier3 = Math.max(0, pointsAbove50 - 30) * 800;
+
+            baseValue += tier1 + tier2 + tier3;
+        }
+
+        // 3. Age & Potential Modifiers
+        if (fighter.age <= 22) baseValue *= 1.15; // Prospect premium
+        if (fighter.age >= 34) baseValue *= 0.85; // Veteran discount
+
+        // 4. Fame and Form Modifiers
+        let fameScore = fighter.dynamic_state.fame || (trueOvr * 15);
         let winStreak = Math.max(0, fighter.dynamic_state.wins - fighter.dynamic_state.losses);
-        // Drastically reduced valuation: base OVR multiplier to 135, and wins to a flat 350 to prevent exponential bloat.
-        return Math.floor((ovr * 135) + (fameScore * 0.4) + (winStreak * 350));
+        baseValue += (fameScore * 0.5);
+        baseValue += (winStreak * 400);
+
+        // 5. Personality & Traits
+        if (fighter.personality?.archetype === 'Showboat') baseValue += 4000;
+        if (fighter.traits?.includes('academy_product') && fighter.club_id === window.GameState.playerClubId) baseValue -= 2000;
+
+        // 6. Hard Floor based on Current Salary (Crucial fix for contract extensions)
+        // If a fighter is currently making $26k, she won't randomly ask for $10k just because her base OVR dropped slightly.
+        if (fighter.contract && fighter.contract.salary > 0) {
+            let salaryFloor = fighter.contract.salary;
+            // Only drop the floor if she is aging out and clearly underperforming
+            if (fighter.age >= 34 && trueOvr < 80) {
+                salaryFloor *= 0.85;
+            }
+            baseValue = Math.max(baseValue, salaryFloor);
+        }
+
+        return Math.floor(baseValue);
     },
 
     calculateHappiness(fighter) {
@@ -90,8 +131,7 @@ window.ContractEngine = {
 
         if (fighter.contract.happiness < threshold) {
             fighter.contract.demand_triggered = true;
-            let ovr = Math.round((fighter.core_stats.power + fighter.core_stats.technique + fighter.core_stats.speed) / 3);
-            let demanded_salary = (ovr * 135) + (fighter.dynamic_state.wins * 350);
+            let demanded_salary = this.getPerceivedWorth(fighter);
 
             return {
                 type: 'demand',
@@ -133,7 +173,7 @@ window.ContractEngine = {
         if (!isPlayerAction) {
             f.contract.salary = salary;
             f.contract.seasons_remaining = seasons;
-            f.contract.release_clause = salary * 3;
+            f.contract.release_clause = salary * 10; // Default significantly higher to protect AI rosters
             f.contract.win_bonus = Math.round(salary * 0.1);
             f.contract.happiness = 100;
             f.contract.demand_triggered = false;
@@ -176,15 +216,17 @@ window.ContractEngine = {
         // 3. Relationship Modifiers
         let hasLover = false;
         let hasRival = false;
-        if (f.dynamic_state.relationships) {
+        if (window.RelationshipEngine) {
             const club = gs.getClub(gs.playerClubId);
-            if (club) {
+            if (club && club.fighter_ids) {
                 club.fighter_ids.forEach(id => {
-                    if (id !== f.id && f.dynamic_state.relationships[id]) {
-                        let rel = f.dynamic_state.relationships[id];
-                        let relType = typeof rel === 'string' ? rel : rel.type;
-                        if (relType === 'lovers' || relType === 'best_friends' || relType === 'committed' || relType === 'obsession') hasLover = true;
-                        if (relType === 'bitter_rivals' || relType === 'rivalry') hasRival = true;
+                    if (id !== f.id) {
+                        let rel = window.RelationshipEngine.getRelationship(f.id, id);
+                        if (rel && rel.type !== 'neutral') {
+                            let relType = rel.type;
+                            if (relType === 'lovers' || relType === 'best_friends' || relType === 'committed' || relType === 'obsession') hasLover = true;
+                            if (relType === 'bitter_rivals' || relType === 'rivalry') hasRival = true;
+                        }
                     }
                 });
             }
@@ -212,7 +254,7 @@ window.ContractEngine = {
         if (acceptRatio >= 0.95) { // 5% wiggle room
             f.contract.salary = salary;
             f.contract.seasons_remaining = seasons;
-            f.contract.release_clause = salary * 3;
+            f.contract.release_clause = salary * 10;
             f.contract.win_bonus = Math.round(salary * 0.1);
             f.contract.happiness = 100;
             f.contract.demand_triggered = false;
@@ -242,6 +284,12 @@ window.ContractEngine = {
     startNegotiation(fighter) {
         if (!fighter.contract) return null;
 
+        const gs = window.GameState;
+        if (gs.pendingBosmanMoves && gs.pendingBosmanMoves.find(m => m.fighterId === fighter.id)) {
+            fighter.contract.negotiation = { active: false, walkReason: "She has already signed a pre-contract to join another club next season." };
+            return fighter.contract.negotiation;
+        }
+
         let base_req = this.getPerceivedWorth(fighter);
         let modifier = 1.0;
         let reasons = [];
@@ -258,15 +306,18 @@ window.ContractEngine = {
 
         let hasLover = false;
         let hasRival = false;
-        if (fighter.dynamic_state.relationships) {
+        if (window.RelationshipEngine) {
             const gs = window.GameState;
             const club = gs.getClub(gs.playerClubId);
-            if (club) {
+            if (club && club.fighter_ids) {
                 club.fighter_ids.forEach(id => {
-                    if (id !== fighter.id && fighter.dynamic_state.relationships[id]) {
-                        let relType = typeof fighter.dynamic_state.relationships[id] === 'string' ? fighter.dynamic_state.relationships[id] : fighter.dynamic_state.relationships[id].type;
-                        if (relType === 'lovers' || relType === 'best_friends' || relType === 'committed') hasLover = true;
-                        if (relType === 'bitter_rivals' || relType === 'rivalry') hasRival = true;
+                    if (id !== fighter.id) {
+                        let rel = window.RelationshipEngine.getRelationship(fighter.id, id);
+                        if (rel && rel.type !== 'neutral') {
+                            let relType = rel.type;
+                            if (relType === 'lovers' || relType === 'best_friends' || relType === 'committed' || relType === 'obsession') hasLover = true;
+                            if (relType === 'bitter_rivals' || relType === 'rivalry') hasRival = true;
+                        }
                     }
                 });
             }
@@ -288,6 +339,10 @@ window.ContractEngine = {
 
         targetDuration = Math.max(1, Math.min(5, targetDuration));
 
+        let targetReleaseClause = targetSalary * 8; // Default 8x
+        if (mots.includes('Loyalty')) targetReleaseClause = targetSalary * 12;
+        if (mots.includes('Money') || arch === 'Showboat') targetReleaseClause = targetSalary * 5; // Wants an easier way out
+
         if (curHappy < 20) {
             fighter.contract.negotiation = { active: false, walkReason: "She is too miserable to even sit at the negotiating table right now." };
             return fighter.contract.negotiation;
@@ -298,12 +353,13 @@ window.ContractEngine = {
             patience: 3,
             targetSalary: targetSalary,
             targetDuration: targetDuration,
+            targetReleaseClause: targetReleaseClause,
             reasons: reasons
         };
         return fighter.contract.negotiation;
     },
 
-    evaluateOffer(fighterId, offerSalary, offerDuration) {
+    evaluateOffer(fighterId, offerSalary, offerDuration, offerReleaseClause) {
         const gs = window.GameState;
         const fighter = gs.getFighter(fighterId);
         if (!fighter || !fighter.contract || !fighter.contract.negotiation || !fighter.contract.negotiation.active)
@@ -312,6 +368,10 @@ window.ContractEngine = {
         let neg = fighter.contract.negotiation;
         let demandedSalary = neg.targetSalary;
         let demandedDuration = neg.targetDuration;
+        let demandedClause = neg.targetReleaseClause;
+
+        // Ensure we have a valid offer clause
+        if (!offerReleaseClause) offerReleaseClause = offerSalary * 8;
 
         let durationDiff = Math.abs(offerDuration - demandedDuration);
         let durationPenaltyMultiplier = 1.0;
@@ -324,17 +384,38 @@ window.ContractEngine = {
             durationPenaltyMultiplier = 1.0 + (0.05 * durationDiff);
         }
 
-        let expectedSalaryForThisDuration = Math.floor(demandedSalary * durationPenaltyMultiplier);
-        let offerRatio = offerSalary / expectedSalaryForThisDuration;
+        // Release Clause negotiation logic
+        let clauseMultiplier = 1.0;
+        let clauseRatio = offerReleaseClause / demandedClause;
+
+        // If club demands a massive release clause, fighter wants more money
+        if (clauseRatio > 1.2) {
+            clauseMultiplier = 1.0 + ((clauseRatio - 1.0) * 0.15); // e.g., 2.0 ratio -> 1.15x salary
+        }
+        // If club offers a low release clause, fighter accepts slightly less money
+        else if (clauseRatio < 0.8) {
+            clauseMultiplier = 1.0 - ((1.0 - clauseRatio) * 0.05); // e.g., 0.5 ratio -> 0.975x salary (small discount)
+        }
+
+        let expectedSalaryForThisDurationAndClause = Math.floor(demandedSalary * durationPenaltyMultiplier * clauseMultiplier);
+        let offerRatio = offerSalary / expectedSalaryForThisDurationAndClause;
 
         if (offerRatio >= 0.95) {
             fighter.contract.salary = offerSalary;
             fighter.contract.seasons_remaining = offerDuration;
-            fighter.contract.release_clause = offerSalary * 3;
+            fighter.contract.release_clause = offerReleaseClause;
             fighter.contract.win_bonus = Math.round(offerSalary * 0.1);
             fighter.contract.happiness = 100;
             fighter.contract.demand_triggered = false;
+            fighter.contract.demand_triggered = false;
             fighter.transfer_listed = false;
+
+            if (window.GameState.listedForTransfer) {
+                window.GameState.listedForTransfer = window.GameState.listedForTransfer.filter(d => d.fighterId !== fighterId);
+            }
+            if (window.GameState.transferInbox) {
+                window.GameState.transferInbox = window.GameState.transferInbox.filter(d => d.fighterId !== fighterId);
+            }
             if (window.GameState.pendingTransferDemands) {
                 window.GameState.pendingTransferDemands = window.GameState.pendingTransferDemands.filter(d => d.fighterId !== fighterId);
             }
@@ -351,7 +432,7 @@ window.ContractEngine = {
                 fighter.contract.negotiation.active = false;
                 return { state: 'walked', message: "She is deeply insulted by this lowball offer. She has walked away from the table." };
             }
-            return { state: 'rejected', message: "She found that offer insulting. Her patience is wearing extremely thin. She reiterates her initial demands.", counterSalary: demandedSalary, counterDuration: demandedDuration, patience: neg.patience };
+            return { state: 'rejected', message: "She found that offer insulting. Her patience is wearing extremely thin. She reiterates her initial demands.", counterSalary: demandedSalary, counterDuration: demandedDuration, counterClause: demandedClause, patience: neg.patience };
         }
 
         if (offerRatio < 0.95) {
@@ -361,13 +442,20 @@ window.ContractEngine = {
                 fighter.contract.negotiation.active = false;
                 return { state: 'walked', message: "She is tired of haggling over pennies and has ended negotiations." };
             }
-            let newCounterSalary = Math.floor((expectedSalaryForThisDuration + offerSalary) / 2);
-            newCounterSalary = Math.max(newCounterSalary, Math.floor(expectedSalaryForThisDuration * 0.90));
+            let newCounterSalary = Math.floor((expectedSalaryForThisDurationAndClause + offerSalary) / 2);
+            newCounterSalary = Math.max(newCounterSalary, Math.floor(expectedSalaryForThisDurationAndClause * 0.90));
+
+            // Adjust the demanded clause slightly towards the offer if it's reasonable
+            let newCounterClause = demandedClause;
+            if (clauseRatio > 1.0 && clauseRatio < 3.0) {
+                newCounterClause = Math.floor((demandedClause + offerReleaseClause) / 2);
+            }
 
             neg.targetSalary = newCounterSalary;
             neg.targetDuration = demandedDuration;
+            neg.targetReleaseClause = newCounterClause;
 
-            return { state: 'counter', message: "She thinks we are close, but requires a better compromise.", counterSalary: newCounterSalary, counterDuration: demandedDuration, patience: neg.patience };
+            return { state: 'counter', message: "She thinks we are close, but requires a better compromise.", counterSalary: newCounterSalary, counterDuration: demandedDuration, counterClause: newCounterClause, patience: neg.patience };
         }
     },
 
@@ -437,7 +525,17 @@ window.ContractEngine = {
             } else {
                 // AI club simulated bank logic
                 if (!club.money) club.money = 500000;
-                club.money -= annual_wage_bill;
+                let ut = window.FacilityData ? window.FacilityData.upkeep : [0, 0, 10000, 30000, 60000, 100000, 160000, 240000, 340000, 460000, 600000];
+                let upkeep = ut[Math.min(club.facilities?.gym || 1, 10)]
+                    + ut[Math.min(club.facilities?.recovery || 1, 10)]
+                    + ut[Math.min(club.facilities?.pr || 1, 10)]
+                    + ut[Math.min(club.facilities?.youth || 1, 10)];
+
+                club.money -= (annual_wage_bill + upkeep);
+
+                if (club.money < -100000) {
+                    gs.addNews('finance', `📉 MASSIVE DEBT: ${club.name} is now $${Math.abs(club.money).toLocaleString()} in the red! A fire sale is imminent.`);
+                }
             }
         });
     }

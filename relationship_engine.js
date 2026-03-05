@@ -21,49 +21,43 @@ window.RelationshipEngine = {
 
     // ── MAIN ENTRY POINT ─────────────────────────────────────────────────────
     addTension(fighter1Id, fighter2Id, amount, eventDescription) {
+        if (fighter1Id === fighter2Id) return; // Strict safety guard: No self-relationships
         const gs = window.GameState;
         let f1 = gs.getFighter(fighter1Id);
         let f2 = gs.getFighter(fighter2Id);
         if (!f1 || !f2) return;
 
-        let r1 = this._getOrInitRelation(f1, fighter2Id);
-        let r2 = this._getOrInitRelation(f2, fighter1Id);
+        let rel = this.getRelationship(fighter1Id, fighter2Id);
 
-        r1.tension = Math.min(100, r1.tension + amount);
-        r2.tension = Math.min(100, r2.tension + amount);
+        rel.tension = Math.min(100, rel.tension + amount);
 
         let logStr = `Week ${gs.week}, S${gs.currentSeason || 1}: ${eventDescription}`;
-        r1.history.push(logStr);
-        r2.history.push(logStr);
-
-        r1.last_interaction_week = gs.week;
-        r2.last_interaction_week = gs.week;
+        rel.history.push(logStr);
+        rel.last_interaction_week = gs.week;
 
         // Resolve types — respecting exclusivity
-        let newType1 = this.resolveType(f1, f2, r1.tension);
-        let newType2 = this.resolveType(f2, f1, r2.tension);
+        let newType = this.resolveType(f1, f2, rel.tension);
+        rel.type = newType;
 
-        r1.type = newType1;
-        r2.type = newType2;
+        // Power Dynamics — determines who holds the psychological edge
+        this._updatePowerDynamics(f1, f2, rel);
 
         // Apply exclusivity side-effects (sets primary_partner_id / best_friend_id)
-        this._applyExclusivity(f1, f2, r1);
-        this._applyExclusivity(f2, f1, r2);
+        this._applyExclusivity(f1, f2, rel);
 
         // Cheating slow-burn check
-        this._checkCheatingTrigger(f1, f2, r1, r2);
+        this._checkCheatingTrigger(f1, f2, rel);
 
         // Milestone system
         let mTarget = null;
-        if (r1.tension >= 95) mTarget = 5;
-        else if (r1.tension >= 75) mTarget = 4;
-        else if (r1.tension >= 55) mTarget = 3;
-        else if (r1.tension >= 35) mTarget = 2;
-        else if (r1.tension >= 20) mTarget = 1;
+        if (rel.tension >= 95) mTarget = 5;
+        else if (rel.tension >= 75) mTarget = 4;
+        else if (rel.tension >= 55) mTarget = 3;
+        else if (rel.tension >= 35) mTarget = 2;
+        else if (rel.tension >= 20) mTarget = 1;
 
-        if (mTarget !== null && r1.milestone_reached < mTarget) {
-            r1.milestone_reached = mTarget;
-            r2.milestone_reached = mTarget;
+        if (mTarget !== null && rel.milestone_reached < mTarget) {
+            rel.milestone_reached = mTarget;
 
             if (f1.club_id === gs.playerClubId || f2.club_id === gs.playerClubId) {
                 gs.pendingMilestones = gs.pendingMilestones || [];
@@ -155,12 +149,11 @@ window.RelationshipEngine = {
     },
 
     // ── CHEATING SLOW-BURN SYSTEM ─────────────────────────────────────────────
-    _checkCheatingTrigger(f1, f2, r1, r2) {
+    _checkCheatingTrigger(f1, f2, rel) {
         const gs = window.GameState;
-
         // Run for each direction
-        this._checkOneSidedCheat(f1, f2, r1, gs);
-        this._checkOneSidedCheat(f2, f1, r2, gs);
+        this._checkOneSidedCheat(f1, f2, rel, gs);
+        this._checkOneSidedCheat(f2, f1, rel, gs);
     },
 
     _checkOneSidedCheat(cheater, target, rel, gs) {
@@ -318,11 +311,10 @@ window.RelationshipEngine = {
         f1.dynamic_state.primary_partner_id = f2.id;
         f2.dynamic_state.primary_partner_id = f1.id;
 
-        const r1 = this._getOrInitRelation(f1, f2.id);
-        const r2 = this._getOrInitRelation(f2, f1.id);
-        r1.type = 'committed'; r2.type = 'committed';
-        r1.tension = Math.max(r1.tension, 76);
-        r2.tension = Math.max(r2.tension, 76);
+        const rel = this.getRelationship(f1.id, f2.id);
+        rel.type = 'committed';
+        rel.tension = Math.max(rel.tension, 76);
+        this._updatePowerDynamics(f1, f2, rel);
     },
 
     _breakUpCouple(f1, f2) {
@@ -334,9 +326,8 @@ window.RelationshipEngine = {
     _breakUpCheatRelationship(cheater, newTarget) {
         if (!newTarget) return;
         this._breakUpCouple(cheater, newTarget);
-        const rc = this._getOrInitRelation(cheater, newTarget.id);
-        const rn = this._getOrInitRelation(newTarget, cheater.id);
-        rc.type = 'friction'; rn.type = 'friction';
+        const rel = this.getRelationship(cheater.id, newTarget.id);
+        rel.type = 'friction';
     },
 
     // ── BEST FRIEND SYSTEM ─────────────────────────────────────────────────────
@@ -386,11 +377,13 @@ window.RelationshipEngine = {
         let fL = gs.getFighter(loserId);
         if (!fW || !fL) return;
 
-        let rW = this._getOrInitRelation(fW, loserId);
+        let rW = this.getRelationship(winnerId, loserId);
+        if (!rW) return;
 
         if (rW.type === 'bitter_rivals') {
             fW.dynamic_state.morale = Math.min(100, (fW.dynamic_state.morale || 50) + 15);
             fL.dynamic_state.stress = Math.min(100, (fL.dynamic_state.stress || 20) + 20);
+            rW.dominant_partner_id = winnerId; // Winner asserts dominance in rivalry
         } else if (rW.type === 'obsession') {
             fW.dynamic_state.morale = Math.min(100, (fW.dynamic_state.morale || 50) + 10);
             fL.dynamic_state.morale = Math.max(0, (fL.dynamic_state.morale || 50) - 10);
@@ -409,7 +402,8 @@ window.RelationshipEngine = {
         let f2 = gs.getFighter(fighter2Id);
         if (!f1 || !f2) return;
 
-        let r1 = this._getOrInitRelation(f1, fighter2Id);
+        let r1 = this.getRelationship(fighter1Id, fighter2Id);
+        if (!r1) return;
 
         if (['mentor', 'attraction', 'committed', 'best_friends'].includes(r1.type)) {
             f1.dynamic_state.morale = Math.min(100, (f1.dynamic_state.morale || 50) + 5);
@@ -424,41 +418,85 @@ window.RelationshipEngine = {
     },
 
     // ── INTERNAL HELPERS ──────────────────────────────────────────────────────
-    _getOrInitRelation(fighter, otherId) {
-        if (!fighter.dynamic_state) fighter.dynamic_state = {};
-        if (!fighter.dynamic_state.relationships) fighter.dynamic_state.relationships = {};
-        if (!fighter.dynamic_state.primary_partner_id) fighter.dynamic_state.primary_partner_id = null;
-        if (!fighter.dynamic_state.best_friend_id) fighter.dynamic_state.best_friend_id = null;
+    _getRelKey(id1, id2) {
+        return [id1, id2].sort().join('-');
+    },
 
-        let existing = fighter.dynamic_state.relationships[otherId];
+    getRelationship(id1, id2) {
+        if (id1 === id2) return null;
 
-        // Migrate plain string/number values into full objects
-        if (!existing || typeof existing !== 'object' || Array.isArray(existing)) {
-            let migratedType = (typeof existing === 'string')
-                ? existing.toLowerCase().replace(/ /g, '_')
-                : 'neutral';
-            // Map old 'lovers' to 'committed' for consistency
-            if (migratedType === 'lovers') migratedType = 'committed';
-            if (migratedType === 'friend') migratedType = 'best_friends';
-            fighter.dynamic_state.relationships[otherId] = {
-                tension: (typeof existing === 'number') ? existing : 0,
-                type: migratedType,
+        const gs = window.GameState;
+        if (!gs.relationshipGraph) gs.relationshipGraph = {};
+
+        const key = this._getRelKey(id1, id2);
+
+        if (!gs.relationshipGraph[key]) {
+            gs.relationshipGraph[key] = {
+                f1: id1,
+                f2: id2,
+                tension: 0,
+                type: 'neutral',
                 milestone_reached: 0,
                 history: [],
-                last_interaction_week: 0
+                last_interaction_week: 0,
+                dominant_partner_id: null
             };
         }
 
-        let rel = fighter.dynamic_state.relationships[otherId];
-        if (!Array.isArray(rel.history)) rel.history = [];
-        if (rel.tension === undefined) rel.tension = 0;
-        if (rel.type === undefined) rel.type = 'neutral';
-        // Migrate legacy 'lovers' type inline
-        if (rel.type === 'lovers') rel.type = 'committed';
-        if (rel.type === 'friendship') rel.type = 'best_friends';
-        if (rel.milestone_reached === undefined) rel.milestone_reached = 0;
-        if (rel.last_interaction_week === undefined) rel.last_interaction_week = 0;
+        return gs.relationshipGraph[key];
+    },
 
-        return rel;
+    _updatePowerDynamics(f1, f2, rel) {
+        // Determines who is the "Alpha" in the relationship based on Dominance Hunger & Submissive Lean
+        if (!f1 || !f2 || !rel) return;
+
+        const d1 = f1.personality?.dominance_hunger || 50;
+        const d2 = f2.personality?.dominance_hunger || 50;
+
+        if (d1 > d2 + 10) rel.dominant_partner_id = f1.id;
+        else if (d2 > d1 + 10) rel.dominant_partner_id = f2.id;
+        else rel.dominant_partner_id = null; // Equal footing
+    },
+
+    // Evaluates what happens to a relationship when one partner transfers to another club
+    evaluateTransferFallout(fighterId) {
+        const gs = window.GameState;
+        const fighter = gs.getFighter(fighterId);
+        if (!fighter || !fighter.dynamic_state) return;
+
+        const partnerId = fighter.dynamic_state.primary_partner_id;
+        if (!partnerId) return; // Only care about committed relationships
+
+        const partner = gs.getFighter(partnerId);
+        if (!partner) return;
+
+        // If they end up in the same club anyway, no fallout
+        if (fighter.club_id === partner.club_id) return;
+
+        const rel = this.getRelationship(fighter.id, partner.id);
+        if (!rel) return;
+
+        // Do they break up or try long distance?
+        // High dominance/ego and low loyalty leads to bitter breakups. Submissive/high loyalty try to hold on.
+        const fLoyalty = (fighter.personality?.loyalty || 50);
+        const pLoyalty = (partner.personality?.loyalty || 50);
+
+        // If average loyalty is high, they try long distance. Otherwise, it shatters.
+        if ((fLoyalty + pLoyalty) / 2 > 60) {
+            rel.history.push(`Week ${gs.week}, S${gs.currentSeason || 1}: Separated by transfer, attempting to stay committed long-distance.`);
+            fighter.dynamic_state.stress = Math.min(100, (fighter.dynamic_state.stress || 0) + 15);
+            partner.dynamic_state.stress = Math.min(100, (partner.dynamic_state.stress || 0) + 15);
+            gs.addNews('relationships', `💔 ${fighter.name} and ${partner.name} are attempting to maintain their relationship despite fighting for rival clubs.`);
+        } else {
+            // Messy Breakup
+            this._breakUpCouple(fighter, partner);
+            rel.type = 'bitter_rivals';
+            rel.history.push(`Week ${gs.week}, S${gs.currentSeason || 1}: Transfer caused a highly bitter and public breakup.`);
+
+            fighter.dynamic_state.morale = Math.max(0, (fighter.dynamic_state.morale || 50) - 25);
+            partner.dynamic_state.morale = Math.max(0, (partner.dynamic_state.morale || 50) - 25);
+
+            gs.addNews('relationships', `💔 SCANDAL: The transfer of ${fighter.name} has caused a highly public and bitter breakup with ${partner.name}! They are now sworn enemies.`);
+        }
     }
 };

@@ -44,6 +44,9 @@ window.GameState = {
     schedule: [],
     news: [],
 
+    // Centralized Relationship Graph
+    relationshipGraph: {},
+
     // Training settings (persisted across weeks)
     trainingIntensity: 5,     // Team intensity 1-10
     trainingReport: {},       // { fighterId: [{stat, gain, week}] }
@@ -77,10 +80,7 @@ window.GameState = {
                 this.clubs[c.id] = c;
             });
             fightersData.forEach(f => {
-                // Ensure relationships is an object map for the Tension system
-                if (Array.isArray(f.dynamic_state.relationships) || !f.dynamic_state.relationships) {
-                    f.dynamic_state.relationships = {};
-                }
+                // We no longer initialize f.dynamic_state.relationships here (handled by Graph)
                 // Assign potential (PA) if not already set — replaces natural_ceiling
                 if (!f.potential) {
                     f.potential = this._generatePotential(f.age || 25, f.personality?.archetype);

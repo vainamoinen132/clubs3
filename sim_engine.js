@@ -41,11 +41,32 @@ class MatchSimulation {
             }
         };
 
+        const applyPartnerBuff = (f, opp) => {
+            const partnerId = f.dynamic?.primary_partner_id;
+            if (partnerId) {
+                if (partnerId === opp.id) {
+                    f.currentStats.aggression = Math.floor(f.currentStats.aggression * 0.85);
+                    this.log({ type: 'EVENT', text: `<span style="color:#c2185b; font-weight:bold;">Lover's Quarrel:</span> <strong>${f.name}</strong> is fighting her own partner! Her aggression drops slightly as she hesitates to hurt ${opp.name}.` });
+                } else {
+                    const partner = window.GameState.getFighter(partnerId);
+                    const sourceF = window.GameState.getFighter(f.id);
+                    if (partner && sourceF && partner.club_id === sourceF.club_id) {
+                        f.currentStats.resilience = Math.floor(f.currentStats.resilience * 1.15);
+                        f.currentStats.power = Math.floor(f.currentStats.power * 1.05);
+                        f.currentStats.speed = Math.floor(f.currentStats.speed * 1.05);
+                        this.log({ type: 'EVENT', text: `<span style="color:#e91e63; font-weight:bold;">Power of Love:</span> <strong>${f.name}</strong> fights harder knowing her partner ${partner.name} is watching from her corner corner!` });
+                    }
+                }
+            }
+        };
+
         applyStyleAdvantage(this.f1);
         applyEliteStyleAdvantage(this.f1);
+        applyPartnerBuff(this.f1, this.f2);
 
         applyStyleAdvantage(this.f2);
         applyEliteStyleAdvantage(this.f2);
+        applyPartnerBuff(this.f2, this.f1);
     }
 
     _cloneFighterInitialState(fighter) {

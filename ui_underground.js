@@ -220,25 +220,29 @@ window.UIUnderground = {
 
     showPostMatchModal(playerWon, pFighter, oFighter, payout, isBloodPit, matchIndex) {
         let content = `<div style="text-align:center;">`;
+        let actionHtml = '';
+        if (isBloodPit) {
+            actionHtml = `<button class="btn-primary" style="margin-top: 15px; padding: 15px 30px; font-size: 1.2rem;" onclick="window.UIComponents.closeModal(); window.Router.loadRoute('club');">Leave The Pit</button>`;
+        } else {
+            actionHtml = `<button class="btn-primary" style="margin-top: 15px; padding: 15px 30px; font-size: 1.2rem;" onclick="window.UIComponents.closeModal(); window.UIUnderground.render(document.getElementById('main-view')||document.body);">Continue</button>`;
+        }
+
         if (playerWon) {
+            let log = window.UndergroundEngine.resolveMercyPhase(pFighter, oFighter, 'AI');
+            if (!isBloodPit) {
+                const gs = window.GameState;
+                gs.activeUndergroundTournament.matches[matchIndex].mercyLog = log;
+            }
             content += `
                 <h2 style="color:#4caf50; font-family:'Outfit',sans-serif; font-size: 2.5rem; text-transform:uppercase;">VICTORY</h2>
                 <p style="font-size: 1.2rem;">${pFighter.name} savagely knocked out ${oFighter.name}. ${payout > 0 ? `You earned <strong style="color:#4caf50;">+$${payout.toLocaleString()}</strong>.` : ''}</p>
                 <div style="margin:20px auto; padding:20px; border:2px solid #ff5252; background:rgba(255,0,0,0.1); border-radius:12px; max-width: 400px; box-shadow: 0 0 20px rgba(255,82,82,0.3);">
-                    <h3 style="color:#ff5252; margin-top:0;">MERCY PHASE</h3>
-                    <p style="font-size:0.95rem; color:#ccc;">Your opponent is broken. Finish it.</p>
-                    <div style="display:flex; flex-direction:column; gap:12px;">
-                        <button style="padding: 12px; font-weight: bold; background: #333; color: #fff; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#555'" onmouseout="this.style.background='#333'" onclick="window.UIUnderground.applyMercy(${isBloodPit ? 'null' : matchIndex}, 'gentle', ${isBloodPit})">Walk away. (Honorable)</button>
-                        <button style="padding: 12px; font-weight: bold; background: #ff5252; color: #fff; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#ff3333'" onmouseout="this.style.background='#ff5252'" onclick="window.UIUnderground.applyMercy(${isBloodPit ? 'null' : matchIndex}, 'sadistic', ${isBloodPit})">Break her limb. (Sadistic)</button>
-                        <button style="padding: 12px; font-weight: bold; background: #a855f7; color: #fff; border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#9136e8'" onmouseout="this.style.background='#a855f7'" onclick="window.UIUnderground.applyMercy(${isBloodPit ? 'null' : matchIndex}, 'sexual', ${isBloodPit})">Public degradation. (Traumatizing)</button>
-                        <button style="padding: 12px; font-weight: bold; background: #000; color: #ff5252; border: 2px solid #ff5252; border-radius: 6px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#220000'" onmouseout="this.style.background='#000'" onclick="window.UIUnderground.applyMercy(${isBloodPit ? 'null' : matchIndex}, 'combo', ${isBloodPit})">Mutilation + Assault. (Nightmare)</button>
-                    </div>
+                    <h3 style="color:#ff5252; margin-top:0;">THE POST-FIGHT FATE</h3>
+                    <p style="font-size:0.95rem; color:#ccc; margin-bottom: 10px;">${pFighter.name} looks down at her broken opponent...</p>
+                    <p style="color:#ff5252; font-style:italic;">${log}</p>
                 </div>
+                ${actionHtml}
             `;
-            // Temporarily store winner and loser for the mercy callback if bloodpit
-            if (isBloodPit) {
-                this._tempMercyData = { winner: pFighter, loser: oFighter };
-            }
             window.UIComponents.showModal("POST-MATCH PHASE", content);
         } else {
             let log = window.UndergroundEngine.resolveMercyPhase(oFighter, pFighter, 'AI');
@@ -250,29 +254,12 @@ window.UIUnderground = {
                 <h2 style="color:#ff5252; font-family:'Outfit',sans-serif; font-size: 2.5rem; text-transform:uppercase;">DEFEAT</h2>
                 <p style="font-size: 1.2rem;"><strong>${oFighter.name}</strong> destroyed ${pFighter.name}.</p>
                 <div style="margin:20px 0; padding:15px; border-left:6px solid #ff5252; background:rgba(0,0,0,0.5); text-align:left; border-radius:4px;">
+                    <h3 style="color:#ff5252; margin-top:0;">THE POST-FIGHT FATE</h3>
                     <p style="color:#ff5252; font-style:italic; font-size:1.1rem;">${log}</p>
                 </div>
-                <button class="btn-primary" style="margin-top: 15px; padding: 15px 30px; font-size: 1.2rem;" onclick="window.UIComponents.closeModal(); window.UIUnderground.render(document.getElementById('main-view')||document.body);">Accept Fate</button>
+                ${actionHtml}
             `;
             window.UIComponents.showModal("POST-MATCH PHASE", content);
-        }
-    },
-
-    applyMercy(matchIndex, choice, isBloodPit = false) {
-        const gs = window.GameState;
-        let data = isBloodPit ? this._tempMercyData : gs.activeUndergroundTournament.matches[matchIndex];
-
-        let log = window.UndergroundEngine.resolveMercyPhase(data.winner, data.loser, choice);
-
-        if (isBloodPit) {
-            this._tempMercyData = null;
-            window.UIComponents.closeModal();
-            window.UIComponents.showModal("THE PIT REMEMBERS", `<p style="color:#ff5252; font-style:italic;">${log}</p><br><button class="btn-primary" onclick="window.UIComponents.closeModal(); window.Router.loadRoute('club')">Leave</button>`);
-        } else {
-            // It's a tournament match
-            gs.activeUndergroundTournament.matches[matchIndex].mercyLog = log;
-            window.UIComponents.closeModal();
-            this.render(document.getElementById('main-view') || document.body);
         }
     },
 

@@ -35,32 +35,101 @@ window.AIEngine = {
         const gs = window.GameState;
         let pclub = gs.getClub(gs.playerClubId);
         if (pclub && pclub.fighter_ids) {
-            gs.pendingPoachEvents = gs.pendingPoachEvents || [];
+            gs.pendingPoachEvents = gs.pendingPoachEvents || []; // KEEP FOR COMPATIBILITY IF OLD SAVES HAVE THEM, BUT WE WONT USE THEM IN UI ANYMORE
 
             pclub.fighter_ids.forEach(id => {
                 let f = gs.getFighter(id);
-                // If star player in final season or massive win streak
+                // 1. Random Poaching Attempt on Star Players
                 if (f && f.contract && (f.contract.seasons_remaining <= 1 || (f.record && f.record.w > 4))) {
                     if (Math.random() < 0.08) { // 8% chance per week per star
-
-                        // Select random AI club with enough money
                         let aiClubs = Object.values(gs.clubs).filter(c => c.id !== gs.playerClubId);
                         let bidder = aiClubs[Math.floor(Math.random() * aiClubs.length)];
-
                         let cs = f.core_stats;
                         let ovr = (cs.power + cs.technique + cs.speed) / 3;
-                        let baseFee = Math.floor(ovr * 1500); // Massive valuation for player's stars
-
-                        // Inflate slightly
+                        let baseFee = Math.floor(ovr * 1500);
                         let finalBid = baseFee + (Math.floor(Math.random() * 8000));
 
-                        // Only bid if the AI club actually has the cash
-                        if (bidder.money > finalBid) {
-                            gs.pendingPoachEvents.push({
-                                fighterId: f.id,
-                                bidderId: bidder.id,
-                                transferFee: finalBid
-                            });
+                        if (bidder.money > finalBid && bidder.fighter_ids.length < 8) {
+                            // Instead of UI blocking, evaluate happiness instantly
+                            let aiOffer = f.contract.salary * (1.5 + Math.random());
+
+                            // Happiness check: Highly loyal fighters reject even massive offers
+                            if (f.dynamic_state.happiness >= 85 && aiOffer < f.contract.salary * 3) {
+                                gs.addNews("transfer", `🛡️ LOYALTY: ${bidder.name} offered a massive contract to steal ${f.name}, but she rejected it out of loyalty to ${pclub.name}!`);
+                                f.dynamic_state.morale = Math.min(100, f.dynamic_state.morale + 10); // Boost morale for staying loyal
+                            } else if (f.dynamic_state.happiness >= 70 && aiOffer < f.contract.salary * 2) {
+                                gs.addNews("transfer", `🛡️ REJECTED: ${bidder.name} tried to poach ${f.name}, but she is content at ${pclub.name} and declined the offer.`);
+                            } else {
+                                // POACH SUCCESS
+                                bidder.money -= finalBid;
+                                gs.money += finalBid;
+                                pclub.fighter_ids = pclub.fighter_ids.filter(fid => fid !== f.id);
+                                f.club_id = bidder.id;
+                                f.contract.salary = Math.floor(aiOffer);
+                                f.contract.release_clause = f.contract.salary * 8;
+                                f.contract.happiness = 100;
+                                f.contract.seasons_remaining = 3;
+                                bidder.fighter_ids.push(f.id);
+
+                                if (window.UIComponents && window.UIComponents.showModal) {
+                                    window.UIComponents.showModal(
+                                        "🚨 HOSTILE TAKEOVER SUCCESSFUL",
+                                        `**${bidder.name}** has paid a massive **$${finalBid.toLocaleString()}** transfer fee and offered a highly lucrative contract to **${f.name}**!\n\nDue to her current happiness and contract status, she has accepted their offer and left your club immediately. The transfer fee has been deposited.`,
+                                        "danger"
+                                    );
+                                }
+                                gs.addNews("transfer", `💣 SHOCK POACH: ${bidder.name} paid $${finalBid.toLocaleString()} to poach ${f.name} from ${pclub.name}!`);
+                            }
+                        }
+                    }
+                }
+
+                // 2. FM-Style Ruthless Release Clause Trigger
+                if (f && f.contract && f.contract.release_clause > 0) {
+                    let rc = f.contract.release_clause;
+                    let ovr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
+
+                    // Is the release clause criminally low for their skill?
+                    // Expected value: 80 OVR = ~ $20,000+ perceived worth easily.
+                    let perceivedValue = (ovr * 200) + ((f.dynamic_state.wins || 0) * 400);
+
+                    if (rc < perceivedValue * 2 && ovr > 65) {
+                        // Scan for a rich AI club
+                        let richestClubs = Object.values(gs.clubs)
+                            .filter(c => c.id !== gs.playerClubId && c.fighter_ids.length < 8 && c.money > rc * 4)
+                            .sort((a, b) => b.money - a.money);
+
+                        if (richestClubs.length > 0 && Math.random() < 0.05) { // 5% chance per week
+                            let predator = richestClubs[0];
+
+                            // Happiness check for Release Clause triggers too
+                            let aiOffer = f.contract.salary * 1.5;
+                            if (f.dynamic_state.happiness >= 85 && aiOffer < f.contract.salary * 3) {
+                                gs.addNews("transfer", `🛡️ LOYALTY: ${predator.name} triggered the release clause for ${f.name}, but she rejected their contract offer!`);
+                                f.dynamic_state.morale = Math.min(100, f.dynamic_state.morale + 10);
+                            } else {
+                                // Execute ruthless poaching!
+                                predator.money -= rc;
+                                gs.money += rc;
+
+                                pclub.fighter_ids = pclub.fighter_ids.filter(fid => fid !== f.id);
+
+                                f.club_id = predator.id;
+                                f.contract.salary = Math.floor(rc / 3);
+                                f.contract.release_clause = f.contract.salary * 10; // Predator club locks them down
+                                f.contract.happiness = 100;
+                                f.contract.seasons_remaining = 3;
+                                predator.fighter_ids.push(f.id);
+
+                                if (window.UIComponents && window.UIComponents.showModal) {
+                                    window.UIComponents.showModal(
+                                        "🚨 RELEASE CLAUSE TRIGGERED",
+                                        `**${predator.name}** has ruthlessly bypassed negotiations and triggered the **$${rc.toLocaleString()}** release clause in **${f.name}**'s contract!\n\nShe has accepted their contract offer and immediately transferred to their club. The funds have been deposited. Always secure your stars with larger buyouts!`,
+                                        "danger"
+                                    );
+                                }
+                                gs.addNews("transfer", `💣 SHOCK POACH: ${predator.name} triggers the $${rc.toLocaleString()} buyout clause to steal ${f.name} from ${pclub.name}!`);
+                            }
                         }
                     }
                 }
@@ -87,6 +156,9 @@ window.AIEngine = {
 
         // --- 4.5. The Underground Risk ---
         this._runAIUndergroundLogic(club);
+
+        // --- 4.6. Roster Guard (FM-style emergency hiring) ---
+        this._ensureMinimumRoster(club);
 
         // --- 5. Weekly recovery pass ---
         let recLevel = club.facilities?.recovery || 1;
@@ -211,6 +283,9 @@ window.AIEngine = {
         const gs = window.GameState;
         if (!gs.listedForTransfer) gs.listedForTransfer = [];
 
+        // Safety: Don't list anyone if we already have a tiny squad
+        if (club.fighter_ids.length <= 2) return;
+
         // --- A. Excess roster (8+): sell weakest ---
         if (club.fighter_ids.length >= 8) {
             const sorted = club.fighter_ids
@@ -230,8 +305,8 @@ window.AIEngine = {
         }
 
         // --- B. Fighter-initiated listing: restless/wants_out fighters ---
-        // Only runs ~30% of weeks to avoid flooding
-        if (Math.random() > 0.30) return;
+        // Only runs ~5% of weeks to avoid flooding the global list
+        if (Math.random() > 0.05) return;
 
         club.fighter_ids.forEach(id => {
             const f = gs.getFighter(id);
@@ -251,7 +326,7 @@ window.AIEngine = {
                 shouldList = true;
                 reason = w.reasons[0] || 'unhappy';
             } else if (w.level === 'restless' && finalYear) {
-                shouldList = Math.random() < 0.5; // 50% chance to list rather than hold
+                shouldList = Math.random() < 0.15; // 15% chance to list rather than hold
                 reason = 'final contract year & restless';
             }
 
@@ -340,20 +415,7 @@ window.AIEngine = {
                 // Fallback: if everyone is injured/exhausted, use anyone with lowest fatigue
                 if (available.length === 0) available = club.fighter_ids.map(id => gs.getFighter(id)).filter(Boolean);
 
-                // **NEW: Strict Rookie Veto System**
-                // Find the max OVR among available fighters
-                let maxOvr = 0;
-                available.forEach(f => {
-                    let ovr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
-                    if (ovr > maxOvr) maxOvr = ovr;
-                });
-                // Filter out any fighter whose OVR is more than 20 points lower than the club's available best
-                // This stops high-level clubs from fielding recent 35 OVR free agents in title matches
-                let eliteAvailable = available.filter(f => {
-                    let ovr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
-                    return ovr >= (maxOvr - 20);
-                });
-                if (eliteAvailable.length > 0) available = eliteAvailable;
+                // (Removed the Strict Rookie Veto System, let the true OVR + Style Affinity algorithm evaluate everyone natively)
 
                 // Step 2: score each available fighter
                 const scoreFighter = (id) => {
@@ -362,49 +424,64 @@ window.AIEngine = {
 
                     let score = 0;
 
-                    // Base OVR (40% weight)
-                    let ovr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
-                    score += ovr * 0.4;
+                    // Calculate True OVR across all core combat stats for a fully accurate baseline
+                    let totalStats = f.core_stats.power + f.core_stats.technique + f.core_stats.speed + f.core_stats.control + f.core_stats.endurance + f.core_stats.resilience + f.core_stats.aggression + f.core_stats.composure + f.core_stats.presence;
+                    let trueOvr = totalStats / 9;
+                    score += trueOvr * 1.0;
 
-                    // Style affinity (30% weight) — send specialists to their style
+                    // Evaluate Match Style Affinity (Heavily increased weight to encourage specialists)
                     const styleMap = {
                         'boxing': 'boxing',
                         'naked_wrestling': 'naked_wrestling',
                         'catfight': 'catfight',
-                        'sexfight': 'sexfight'
+                        'sexfight': 'sexfight',
+                        'kickboxing': 'kickboxing',
+                        'submission': 'submission'
                     };
                     let affinityKey = styleMap[matchStyle];
+                    let affinity = 50;
                     if (affinityKey && f.style_affinities) {
-                        let affinity = f.style_affinities[affinityKey] || 50;
-                        score += affinity * 0.3;
+                        affinity = f.style_affinities[affinityKey] || 50;
                     }
 
-                    // Fatigue penalty (20% weight) — fresher fighters score higher
-                    let fatigue = f.dynamic_state.fatigue || 0;
-                    score += (100 - fatigue) * 0.2;
+                    // Add standard affinity curve
+                    score += affinity * 0.6; // Previously 0.15 (massively undervalued)
 
-                    // Form bonus (10% weight) — win streaks carry momentum
+                    // Elite Mastery Buff detection
+                    // In sim_engine, 90+ affinity grants a massive 10% global stat boost. AI must recognize this!
+                    if (affinity >= 90) {
+                        score += (trueOvr * 0.3); // Massive valuation jump to prioritize sending Elite Masters
+                    }
+
+                    // Fatigue Penalty (fresher fighters score higher)
+                    let fatigue = f.dynamic_state.fatigue || 0;
+                    score -= fatigue * 0.6;
+
+                    // Form bonus (win streaks carry momentum)
                     let streak = f.dynamic_state.win_streak || 0;
-                    score += Math.min(streak * 3, 15) * 0.1;
+                    score += Math.min(streak * 2, 10);
 
                     // Rivalry boost — if this fighter has a bitter rival in the opponent club,
-                    // she is 15% more motivated to fight
+                    // she is highly motivated to fight (simulates psychological stakes)
                     if (opponentClub) {
                         opponentClub.fighter_ids.forEach(oppId => {
-                            let rel = f.dynamic_state.relationships && f.dynamic_state.relationships[oppId];
-                            if (rel && (rel === 'Bitter Rival' || rel.type === 'bitter_rivals')) {
-                                score += ovr * 0.15;
+                            if (window.RelationshipEngine) {
+                                let rel = window.RelationshipEngine.getRelationship(f.id, oppId);
+                                if (rel && (rel.type === 'bitter_rivals' || rel.type === 'rivalry' || rel.type === 'friction')) {
+                                    score += trueOvr * 0.15;
+                                }
                             }
                         });
                     }
 
-                    // High ego fighters slightly prefer high-profile matches (small self-selection bias)
+                    // High ego fighters constantly demand high-profile spotlight matches
                     if (f.dynamic_state.ego === 'High') score += 5;
 
                     return score;
                 };
 
                 // Step 3: sort by score, pick the top scorer
+                if (!available || available.length === 0) return null;
                 available.sort((a, b) => scoreFighter(b.id) - scoreFighter(a.id));
                 return available[0].id;
             };
@@ -414,7 +491,21 @@ window.AIEngine = {
         }
 
         // If it's a player match that has been played, or an AI match where fighters were selected
-        if (!m.homeFighter || !m.awayFighter) return; // Should not happen if logic above is sound
+        if (!m.homeFighter || !m.awayFighter) {
+            console.warn("Ghost match forfeit: One or both clubs could not field a fighter (possibly due to empty roster). Awarding 5-0 win.");
+            // Award 5-0 win to the club that has a fighter. If both are empty, it's a 0-0 void.
+            if (m.homeFighter && !m.awayFighter) {
+                m.winnerId = m.homeFighter;
+                m.rounds = { f1: 5, f2: 0 };
+            } else if (!m.homeFighter && m.awayFighter) {
+                m.winnerId = m.awayFighter;
+                m.rounds = { f1: 0, f2: 5 };
+            } else {
+                m.winnerId = null;
+                m.rounds = { f1: 0, f2: 0 };
+            }
+            return;
+        }
 
         let hf = window.GameState.getFighter(m.homeFighter);
         let af = window.GameState.getFighter(m.awayFighter);
@@ -435,10 +526,25 @@ window.AIEngine = {
             window.UISponsors.collectMatchPayout(m, winnerClubId === window.GameState.playerClubId);
         }
 
+        // --- FM-Style AI Ticket Revenue ---
+        if (m.home !== window.GameState.playerClubId && hf && af) {
+            let hClub = window.GameState.getClub(m.home);
+            if (hClub) {
+                let hfOvr = (hf.core_stats.power + hf.core_stats.technique + hf.core_stats.speed) / 3;
+                let afOvr = (af.core_stats.power + af.core_stats.technique + af.core_stats.speed) / 3;
+                let matchFame = (hf.dynamic_state.fame || (hfOvr * 15)) + (af.dynamic_state.fame || (afOvr * 15));
+
+                let ticketSales = Math.floor(matchFame * 12);
+                let prMult = 1.0 + ((hClub.facilities?.pr || 1) - 1) * 0.15;
+                hClub.money = (hClub.money || 0) + Math.floor(ticketSales * prMult);
+            }
+        }
+
         // Apply global post-match streaks
         if (window.SimEvents) {
             let gRoundDiff = Math.abs((sim.roundsWon?.f1 || 0) - (sim.roundsWon?.f2 || 0));
-            window.SimEvents.processPostMatch(sim.winner.id, sim.winner === hf ? af.id : hf.id, gRoundDiff);
+            let loserId = sim.winner.id === hf.id ? af.id : hf.id;
+            window.SimEvents.processPostMatch(sim.winner.id, loserId, gRoundDiff, m.style);
         }
 
         // Post-match fatigue AND injury rolls for NPC fighters
@@ -469,8 +575,15 @@ window.AIEngine = {
         // Process Contracts (happiness tracking — weekly)
         if (window.ContractEngine) window.ContractEngine.updateAllContracts();
 
-        // Without a Playoffs system built yet, Season simply ends after Week 14.
-        if (gs.week > 14) {
+        // Show Season Highlights right after Week 14 ends (Start of Week 15)
+        if (gs.week === 15) {
+            if (window.UIComponents && window.UIComponents.showSeasonHighlights) {
+                window.UIComponents.showSeasonHighlights();
+            }
+        }
+
+        // Season hard resets after Week 16 (giving 2 weeks of offseason)
+        if (gs.week > 16) {
             console.log("=== REGULAR SEASON ENDED ===");
             // Annual wage + upkeep deduction at season end
             if (window.ContractEngine) window.ContractEngine._deductAnnualWages();
@@ -482,8 +595,9 @@ window.AIEngine = {
             if (!gs.clubRivalries) gs.clubRivalries = {};
             gs.schedule.forEach(m => {
                 if (m.winnerId && m.rounds) {
-                    let wClub = gs.getFighter(m.winnerId).club_id;
-                    let lClub = wClub === m.home ? m.away : m.home;
+                    // BUGFIX: Determine historical club from match record, not current fighter location
+                    let wClub = (m.winnerId === m.homeFighter) ? m.home : m.away;
+                    let lClub = (wClub === m.home) ? m.away : m.home;
                     if (wClub && lClub) {
                         let pair = [wClub, lClub].sort().join('-');
                         if (!gs.clubRivalries[pair]) gs.clubRivalries[pair] = 0;
@@ -505,10 +619,30 @@ window.AIEngine = {
 
                 // Season-end AI actions for NPC clubs
                 const club = gs.clubs[clubId];
+
+                // 1. Recalculate Club Fame dynamically
+                let totalFame = 0;
+                club.fighter_ids.forEach(fid => {
+                    let f = gs.getFighter(fid);
+                    if (f) {
+                        let fOvr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
+                        totalFame += f.dynamic_state.fame || Math.floor(fOvr * 10);
+                    }
+                });
+                let st = gs.leagueStandings.find(s => s.id === club.id);
+                if (st && st.w > 0) totalFame += (st.w * 50);
+                club.fame = Math.floor(totalFame);
+
                 this._runAIFacilitySpending(club);      // Facility upgrades
                 this._runAISponsorSigning(club);         // Sign/renew a sponsor deal
                 this._collectAISponsorSeasonPayout(club); // Collect lump-sum sponsor income
                 this._runAIStaffHiring(club);            // Hire staff if slots open
+            });
+
+            // ── OVR Snapshot for "Most Improved" Awards ──
+            Object.values(gs.fighters).forEach(f => {
+                let currentOvr = Math.floor((f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3);
+                f.history_start_of_season_OVR = currentOvr;
             });
 
             gs.season++;
@@ -609,8 +743,10 @@ window.AIEngine = {
         let pastMatches = gs.schedule.filter(m => m.week <= gs.week && m.winnerId && m.rounds !== null);
 
         pastMatches.forEach(m => {
-            let winClubId = gs.getFighter(m.winnerId).club_id;
-            let loseClubId = winClubId === m.home ? m.away : m.home;
+            // BUGFIX: Do not look up the fighter's CURRENT club_id, as they may have transferred mid-season!
+            // Instead, derive the historically accurate winning club directly from the match record.
+            let winClubId = (m.winnerId === m.homeFighter) ? m.home : m.away;
+            let loseClubId = (winClubId === m.home) ? m.away : m.home;
 
             // MatchSimulation stores rounds as { f1: 5, f2: X }
             let winnerRoundsWon = 5;
@@ -699,9 +835,14 @@ window.AIEngine = {
 
             if (window.SeasonEvents) {
                 let champClub = gs.getClub(champ.id);
-                if (champClub && champClub.fighter_ids.length > 0) {
-                    let topFighter = champClub.fighter_ids.map(id => gs.getFighter(id)).reduce((a, b) => (a.record ? a.record.w : 0) > (b.record ? b.record.w : 0) ? a : b);
-                    if (topFighter) window.SeasonEvents.processChampionship(topFighter.id);
+                if (champClub) {
+                    if (!champClub.championships) champClub.championships = 0;
+                    champClub.championships += 1;
+
+                    if (champClub.fighter_ids.length > 0) {
+                        let topFighter = champClub.fighter_ids.map(id => gs.getFighter(id)).reduce((a, b) => (a.record ? a.record.w : 0) > (b.record ? b.record.w : 0) ? a : b);
+                        if (topFighter) window.SeasonEvents.processChampionship(topFighter.id);
+                    }
                 }
             }
         }
@@ -917,6 +1058,73 @@ window.AIEngine = {
             this._generateFallbackStaff(gs);
         }
 
+        // ── MEGA-RICH STAFF POACHING ──
+        if (club.money > 1000000 && Math.random() < 0.3) {
+            let allExternalStaff = [];
+            Object.keys(gs.clubs).forEach(cid => {
+                if (cid === club.id) return;
+                let c = gs.clubs[cid];
+                if (c.staff) {
+                    Object.entries(c.staff).forEach(([r, sId]) => {
+                        let s = gs.staff[sId];
+                        if (s && s.skill >= 80) {
+                            allExternalStaff.push({ clubId: cid, role: r, staff: s });
+                        }
+                    });
+                }
+            });
+
+            if (allExternalStaff.length > 0) {
+                // Pick the best one
+                allExternalStaff.sort((a, b) => b.staff.skill - a.staff.skill);
+                let target = allExternalStaff[0];
+                let currentSalary = target.staff.salary || 15000;
+                let offer = currentSalary * 2;
+
+                if (club.money >= offer + 100000) {
+                    // Try to poach
+                    let poached = false;
+                    if (target.clubId === gs.playerClubId) {
+                        let match = confirm(`🚨 STAFF POACHING!\n\nMega-rich rival ${club.name} has offered your ${target.role.replace(/_/g, ' ')}, ${target.staff.name} (Level ${target.staff.skill}), a massive salary of $${offer.toLocaleString()}/yr to defect!\n\nDo you want to MATCH this offer to keep them?`);
+                        if (match) {
+                            gs.money -= (offer - currentSalary);
+                            target.staff.salary = offer;
+                            gs.addNews('club', `💰 You matched ${club.name}'s massive offer to keep your ${target.role.replace(/_/g, ' ')}, ${target.staff.name}. New salary: $${offer.toLocaleString()}`);
+                        } else {
+                            poached = true;
+                        }
+                    } else {
+                        // NPC vs NPC - always poaches if the other NPC is poorer
+                        let victimClub = gs.clubs[target.clubId];
+                        if (victimClub && (victimClub.money || 0) < offer) {
+                            poached = true;
+                        }
+                    }
+
+                    if (poached) {
+                        let victimName = target.clubId === gs.playerClubId ? "YOUR club" : gs.getClub(target.clubId).name;
+                        gs.addNews('transfer', `🚨 RUTHLESS MOVE: ${club.name} poached elite ${target.role.replace(/_/g, ' ')} ${target.staff.name} away from ${victimName} by offering double salary ($${offer.toLocaleString()})!`);
+
+                        // Execute poach
+                        let victimClub = gs.clubs[target.clubId];
+                        if (victimClub && victimClub.staff[target.role] === target.staff.id) {
+                            delete victimClub.staff[target.role];
+                        }
+
+                        // If poaching club already had someone in this role, send them to the pool
+                        if (club.staff[target.role]) {
+                            gs.staffPool.push(club.staff[target.role]);
+                        }
+
+                        club.staff[target.role] = target.staff.id;
+                        target.staff.salary = offer;
+                        club.money -= offer;
+                        return; // Stop further hiring this season to balance
+                    }
+                }
+            }
+        }
+
         const allRoles = ['head_coach', 'striking_coach', 'grapple_coach', 'conditioning_coach', 'psych_coach'];
 
         // Persona role priority
@@ -1045,11 +1253,23 @@ window.AIEngine = {
             youth: [0, 20000, 50000, 120000, 220000, 350000, 550000, 800000, 1200000, 2000000, "MAX"]
         };
 
+        let wageBill = 0;
+        club.fighter_ids.forEach(id => {
+            let f = window.GameState.getFighter(id);
+            if (f && f.contract) wageBill += f.contract.salary;
+        });
+        if (club.staff) {
+            Object.values(club.staff).forEach(sid => {
+                if (sid && window.GameState.staff[sid]) wageBill += window.GameState.staff[sid].salary;
+            });
+        }
+
         const canUpgrade = (key) => {
             let level = club.facilities[key] || 1;
             if (level >= 10) return false;
             let cost = costs[key][level];
-            return typeof cost === 'number' && club.money >= cost;
+            let safeBuffer = wageBill + 50000; // Need wages + $50k emergency fund
+            return typeof cost === 'number' && club.money >= (cost + safeBuffer);
         };
 
         const doUpgrade = (key) => {
@@ -1058,62 +1278,58 @@ window.AIEngine = {
             if (typeof cost !== 'number' || club.money < cost) return false;
             club.money -= cost;
             club.facilities[key] = level + 1;
-            window.GameState.addNews('club', `${club.name} upgraded their ${key.charAt(0).toUpperCase() + key.slice(1)} to Level ${club.facilities[key]}.`);
+            window.GameState.addNews('club', `🏗️ ${club.name} upgraded their ${key.charAt(0).toUpperCase() + key.slice(1)} to Level ${club.facilities[key]}!`);
             return true;
+        };
+
+        const doUpgradesForOrder = (order, max) => {
+            let upgrades = 0;
+            for (let loops = 0; loops < max; loops++) {
+                let upgradedThisLoop = false;
+                for (let key of order) {
+                    if (upgrades >= max) break;
+                    if (canUpgrade(key)) {
+                        doUpgrade(key);
+                        upgrades++;
+                        upgradedThisLoop = true;
+                    }
+                }
+                if (!upgradedThisLoop) break;
+            }
         };
 
         const persona = club.ai_persona || 'balanced';
 
+        let loopMax = 2; // Default
         switch (persona) {
-            case 'big_spender': {
-                const order = ['recovery', 'gym', 'youth', 'pr'];
-                let upgrades = 0;
-                for (let key of order) {
-                    if (upgrades >= 2) break;
-                    if (canUpgrade(key)) { doUpgrade(key); upgrades++; }
-                }
+            case 'big_spender': loopMax = 4; break;
+            case 'talent_developer': loopMax = 3; break;
+            case 'brand_first': loopMax = 3; break;
+            case 'tactician': loopMax = 3; break;
+            case 'saboteur': loopMax = 1; break;
+        }
+
+        // FORCE UPGRADES FOR RICH CLUBS
+        if (club.money > 1000000) loopMax = 10; // Mega-rich clubs will just buy everything they can
+        else if (club.money > 500000) loopMax += 3; // Rich clubs upgrade much faster
+
+        switch (persona) {
+            case 'big_spender':
+                doUpgradesForOrder(['recovery', 'gym', 'youth', 'pr'], loopMax);
                 break;
-            }
-            case 'talent_developer': {
-                const order = ['gym', 'youth', 'recovery', 'pr'];
-                for (let key of order) {
-                    if (canUpgrade(key)) { doUpgrade(key); break; }
-                }
+            case 'talent_developer':
+                doUpgradesForOrder(['gym', 'youth', 'recovery', 'pr'], loopMax);
                 break;
-            }
-            case 'brand_first': {
-                const order = ['pr', 'recovery', 'youth', 'gym'];
-                for (let key of order) {
-                    if (canUpgrade(key)) { doUpgrade(key); break; }
-                }
+            case 'brand_first':
+                doUpgradesForOrder(['pr', 'recovery', 'youth', 'gym'], loopMax);
                 break;
-            }
-            case 'tactician': {
-                let keys = ['gym', 'recovery', 'pr', 'youth'];
-                keys.sort((a, b) => (club.facilities[a] || 1) - (club.facilities[b] || 1));
-                for (let key of keys) {
-                    if (canUpgrade(key)) { doUpgrade(key); break; }
-                }
-                break;
-            }
-            case 'saboteur': {
-                if (Math.random() < 0.30) {
-                    let keys = ['gym', 'recovery', 'pr', 'youth'].filter(k => canUpgrade(k));
-                    if (keys.length > 0) {
-                        doUpgrade(keys[Math.floor(Math.random() * keys.length)]);
-                    }
-                }
-                break;
-            }
+            case 'tactician':
+            case 'saboteur':
             case 'balanced':
-            default: {
-                let keys = ['gym', 'recovery', 'pr', 'youth'];
-                keys.sort((a, b) => (club.facilities[a] || 1) - (club.facilities[b] || 1));
-                for (let key of keys) {
-                    if (canUpgrade(key)) { doUpgrade(key); break; }
-                }
+            default:
+                let keysBal = ['gym', 'recovery', 'pr', 'youth'].sort((a, b) => (club.facilities[a] || 1) - (club.facilities[b] || 1));
+                doUpgradesForOrder(keysBal, loopMax);
                 break;
-            }
         }
     },
 
@@ -1153,8 +1369,8 @@ window.AIEngine = {
             let pf = {
                 id: 'youth_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
                 name: n,
-                avatar: `assets/portraits/generic/${Math.floor(Math.random() * 490) + 1}.webp`,
-                age: 16 + Math.floor(Math.random() * 4), // Ages 16-19
+                avatar: `generic/${Math.floor(Math.random() * 490) + 1}.png`,
+                age: 18 + Math.floor(Math.random() * 4), // Ages 18-21
                 tier: 1,
                 core_stats: {
                     power: Math.max(10, Math.round(baseStat + Math.random() * 20 - 10)),
@@ -1204,5 +1420,68 @@ window.AIEngine = {
                 gs.addNews('global', `🎓 The Youth Academy has graduated a new prospect! ${pf.name} joins ${club.name} on a 3-year rookie deal.`);
             }
         }
+    },
+
+    _ensureMinimumRoster(club) {
+        const gs = window.GameState;
+        if (club.fighter_ids.length >= 2) return;
+
+        if (club.money < 10000 && club.fighter_ids.length === 0) {
+            club.money += 40000;
+            gs.addNews('global', `🏦 FINANCIAL AID: The League has granted ${club.name} a $40,000 stabilization subsidy to prevent bankruptcy.`);
+        }
+
+        const pool = (gs.transferPool || []).filter(f => !f.club_id);
+        if (pool.length > 0) {
+            const affordable = pool.filter(f => {
+                const ovr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
+                return club.money >= (ovr * 150);
+            });
+
+            if (affordable.length > 0) {
+                const pick = affordable.sort((a, b) => {
+                    const aOvr = (a.core_stats.power + a.core_stats.technique + a.core_stats.speed) / 3;
+                    const bOvr = (b.core_stats.power + b.core_stats.technique + b.core_stats.speed) / 3;
+                    return aOvr - bOvr;
+                })[0];
+
+                gs.addNews('transfer', `🆘 EMERGENCY HIRE: ${club.name} signed ${pick.name} on a short-term deal to avoid roster collapse.`);
+                pick.club_id = club.id;
+                club.fighter_ids.push(pick.id);
+                pick.contract = {
+                    salary: 12000,
+                    seasons_remaining: 1,
+                    happiness: 100,
+                    win_bonus: 500
+                };
+                gs.transferPool = gs.transferPool.filter(p => p.id !== pick.id);
+                if (club.fighter_ids.length < 2) this._ensureMinimumRoster(club);
+                return;
+            }
+        }
+
+        const n = (typeof window.GameNames !== 'undefined') ? window.GameNames.generateName() : "Local Contender";
+        const base = 40 + Math.random() * 10;
+        const pf = {
+            id: 'emergency_' + Date.now() + '_' + Math.floor(Math.random() * 1000),
+            name: n + " (New Hire)",
+            avatar: `generic/${Math.floor(Math.random() * 490) + 1}.png`,
+            age: 18 + Math.floor(Math.random() * 8),
+            core_stats: {
+                power: Math.round(base), technique: Math.round(base), speed: Math.round(base),
+                control: 40, endurance: 40, resilience: 40, aggression: 50, composure: 40, presence: 30
+            },
+            style_affinities: { boxing: 50, naked_wrestling: 50, catfight: 50, sexfight: 50 },
+            personality: { archetype: 'Underdog', dominance_hunger: 50, submissive_lean: 20 },
+            dynamic_state: { fatigue: 0, stress: 0, injuries: [], morale: 70, wins: 0, losses: 0 },
+            potential: 65,
+            club_id: club.id,
+            contract: { salary: 8000, seasons_remaining: 1, happiness: 100 }
+        };
+
+        gs.fighters[pf.id] = pf;
+        club.fighter_ids.push(pf.id);
+        gs.addNews('global', `📢 ROSTER GUARD: ${club.name} has promoted a local contender, ${pf.name}, to the main squad to fulfill league roster requirements.`);
+        if (club.fighter_ids.length < 2) this._ensureMinimumRoster(club);
     }
 };

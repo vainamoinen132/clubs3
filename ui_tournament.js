@@ -10,7 +10,7 @@ window.UITournament = {
         // Calculate Top 4 from standings
         let standings = Object.values(gs.clubs).map(c => {
             // Count wins
-            let wins = gs.schedule.filter(m => m.winnerId && gs.getFighter(m.winnerId)?.club_id === c.id).length;
+            let wins = gs.schedule.filter(m => m.winnerId && ((m.winnerId === m.homeFighter ? m.home : m.away) === c.id)).length;
             return { club: c, wins: wins };
         });
 

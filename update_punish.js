@@ -76,15 +76,21 @@ const newPostMatch = `
     },
     
     _updateRelationship(f1, f2, type) {
-        if (!f1.dynamic_state.relationships) f1.dynamic_state.relationships = {};
-        if (!f2.dynamic_state.relationships) f2.dynamic_state.relationships = {};
-        
-        let oldRel = f1.dynamic_state.relationships[f2.id];
-        if (oldRel === type) return null; // No change
-        
-        f1.dynamic_state.relationships[f2.id] = type;
-        f2.dynamic_state.relationships[f1.id] = type;
-        return \`\${f1.name} and \${f2.name} are now \${type}s.\`;
+        if (!window.RelationshipEngine) return null;
+        const currentRel = window.RelationshipEngine.getRelationship(f1.id, f2.id);
+        if (currentRel.type === type) return null;
+
+        const currentRel = window.RelationshipEngine.getRelationship(f1.id, f2.id);
+        currentRel.type = type;
+        currentRel.tension = Math.min(100, currentRel.tension + 10);
+        if (!currentRel.history) currentRel.history = [];
+        currentRel.history.push(\`Their dynamic fundamentally shifted after the match.\`);
+
+        window.RelationshipEngine._applyExclusivity(f1, f2, currentRel);
+        window.RelationshipEngine._applyExclusivity(f2, f1, currentRel);
+
+        const typeLabel = window.UIRelationships?.getRelLabel ? window.UIRelationships.getRelLabel(type) : type.replace(/_/g, ' ');
+        return \`\${f1.name} and \${f2.name}: \${typeLabel}.\`;
     }
 };`;
 
