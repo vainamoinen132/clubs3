@@ -4,6 +4,39 @@
  */
 
 window.AITransfers = {
+
+    // ── HELPER: Analyze squad style coverage gaps ──────────────────────────
+    // Returns an object indicating which styles the club needs more coverage in
+    _getSquadStyleNeeds(club) {
+        const gs = window.GameState;
+        const styles = ['boxing', 'naked_wrestling', 'catfight', 'sexfight'];
+        const coverage = {};
+        styles.forEach(s => coverage[s] = 0);
+
+        const fighters = (club.fighter_ids || []).map(id => gs.getFighter(id)).filter(Boolean);
+        fighters.forEach(f => {
+            const affs = f.style_affinities || {};
+            styles.forEach(s => {
+                if ((affs[s] || 0) >= 65) coverage[s]++;
+            });
+        });
+
+        // Identify weak spots: styles with 0-1 capable fighters
+        const needs = {};
+        styles.forEach(s => {
+            needs[s] = coverage[s] <= 1 ? 'high' : coverage[s] <= 2 ? 'medium' : 'low';
+        });
+        return needs;
+    },
+
+    // ── HELPER: Full 9-stat OVR calculation ──────────────────────────────────
+    _getFullOvr(f) {
+        if (!f || !f.core_stats) return 0;
+        const cs = f.core_stats;
+        return (cs.power + cs.technique + cs.speed + cs.control + cs.endurance +
+            cs.resilience + cs.aggression + cs.composure + cs.presence) / 9;
+    },
+
     handleSeasonEnd() {
         // 0. Execute pending Bosman moves (pre-signed free transfers take effect)
         if (window.UITransfers && window.UITransfers.executeBosmanMoves) {
@@ -36,8 +69,8 @@ window.AITransfers = {
         if (gs.transferPool.length > 0) {
             // Sort pool by expected potential & fame (the FM "wonderkid" filter)
             let topTargets = [...gs.transferPool].sort((a, b) => {
-                let aVal = (a.potential || 60) * 2 + (a.dynamic_state.fame || 0);
-                let bVal = (b.potential || 60) * 2 + (b.dynamic_state.fame || 0);
+                let aVal = this._getFullOvr(a);
+                let bVal = this._getFullOvr(b);
                 return bVal - aVal;
             }).slice(0, 3); // Top 3 targets this week
 
@@ -49,37 +82,48 @@ window.AITransfers = {
                     if (!c.money) c.money = 100000;
                     if (c.fighter_ids.length >= 8) return;
 
-                    // FM Logic: Big Spenders/Brand First want fame. Talent Developers want potential.
                     let persona = c.ai_persona || 'balanced';
                     let interest = 0;
-                    let targetOvr = (target.core_stats.power + target.core_stats.technique + target.core_stats.speed) / 3;
+                    let targetOvr = this._getFullOvr(target);
+                    let targetOvr3 = (target.core_stats.power + target.core_stats.technique + target.core_stats.speed) / 3;
 
-                    if (persona === 'talent_developer' && target.age <= 21 && target.potential > 75) interest += 50;
-                    if ((persona === 'big_spender' || persona === 'brand_first') && (targetOvr >= 75 || target.dynamic_state.fame > 300)) interest += 50;
-                    if (targetOvr > 60) interest += 10; // General interest for solid fighters
+                    // ── PERSONA-DRIVEN INTEREST ──
+                    if (persona === 'talent_developer' && target.age <= 22 && (target.potential || 60) > 70) interest += 50;
+                    if ((persona === 'big_spender' || persona === 'brand_first') && (targetOvr >= 72 || (target.dynamic_state.fame || 0) > 300)) interest += 50;
+                    if (persona === 'tactician' && targetOvr >= 68) interest += 30; // Tacticians want reliable fighters
+                    if (targetOvr > 60) interest += 10;
 
-                    // UNIVERSAL TALENT GRABBING (Wonderkid Bidding Wars)
-                    if (target.age <= 21 && targetOvr >= 68 && c.money >= 500000) {
-                        interest += 100; // Rich clubs won't let high-rated youth go uncontested
+                    // ── WONDERKID BIDDING WARS ──
+                    if (target.age <= 21 && targetOvr >= 65 && c.money >= 400000) {
+                        interest += 100;
                     }
 
-                    // TACTICAL ROSTER CONSTRUCTION
-                    if (c.staff) {
-                        let hasStriking = false; let hasGrappling = false; let hasConditioning = false;
-                        Object.values(c.staff).forEach(sid => {
-                            if (gs.staff[sid] && gs.staff[sid].role === 'Head Coach') {
-                                if (gs.staff[sid].trait === 'Striking Specialist') hasStriking = true;
-                                if (gs.staff[sid].trait === 'Grappling Specialist') hasGrappling = true;
-                                if (gs.staff[sid].trait === 'Conditioning Expert') hasConditioning = true;
-                            }
-                        });
-
-                        // If they have a specialist coach, they strongly prefer fighters who fit that style naturally
-                        if (target.style_affinities) {
-                            if (hasStriking && (target.style_affinities.boxing > 60 || target.style_affinities.muay_thai > 60)) interest += 25;
-                            if (hasGrappling && (target.style_affinities.bjj > 60 || target.style_affinities.wrestling > 60)) interest += 25;
-                            if (hasConditioning && target.core_stats.endurance > 70) interest += 15;
+                    // ── SQUAD STYLE COVERAGE (smart gap-filling) ──
+                    const squadNeeds = this._getSquadStyleNeeds(c);
+                    const tAffs = target.style_affinities || {};
+                    let styleFitBonus = 0;
+                    ['boxing', 'naked_wrestling', 'catfight', 'sexfight'].forEach(style => {
+                        if ((tAffs[style] || 0) >= 65) {
+                            if (squadNeeds[style] === 'high') styleFitBonus += 25;
+                            else if (squadNeeds[style] === 'medium') styleFitBonus += 10;
                         }
+                    });
+                    interest += styleFitBonus;
+
+                    // ── AGE BALANCE: if squad is aging, prefer youth ──
+                    const rosterFighters = c.fighter_ids.map(id => gs.getFighter(id)).filter(Boolean);
+                    const avgAge = rosterFighters.length > 0 ? rosterFighters.reduce((s, f) => s + (f.age || 25), 0) / rosterFighters.length : 25;
+                    if (avgAge > 28 && target.age <= 23) interest += 20;
+
+                    // ── TACTICAL ROSTER CONSTRUCTION (staff synergy) ──
+                    if (c.staff) {
+                        Object.values(c.staff).forEach(sid => {
+                            const s = gs.staff[sid];
+                            if (!s) return;
+                            if (s.role === 'striking_coach' && (tAffs.boxing || 0) > 60) interest += 15;
+                            if (s.role === 'grapple_coach' && (tAffs.naked_wrestling || 0) > 60) interest += 15;
+                            if (s.role === 'conditioning_coach' && (target.core_stats.endurance || 50) > 70) interest += 10;
+                        });
                     }
 
                     // PANIC BUY: If roster is critically low (< 4 fighters), bid on almost anyone to fill slots
@@ -87,31 +131,11 @@ window.AITransfers = {
                         interest += 100;
                     }
 
-                    // ROSTER UPGRADE: If roster is full, but this free agent is 15+ OVR better than the worst fighter, bid on them anyway
-                    let willUpgrade = false;
-                    let worstId = null;
-                    if (c.fighter_ids.length >= 8) {
-                        let worstOvr = 999;
-                        c.fighter_ids.forEach(fid => {
-                            let f = gs.getFighter(fid);
-                            if (f && f.contract) {
-                                let ovr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
-                                if (ovr < worstOvr) { worstOvr = ovr; worstId = fid; }
-                            }
-                        });
-                        if (worstId && targetOvr >= (worstOvr + 15)) {
-                            willUpgrade = true;
-                            interest += 40;
-                        } else {
-                            return; // Roster is full and target isn't a massive upgrade, don't bid
-                        }
-                    }
-
                     if (interest > 30 && c.money > 60000) {
                         // WEALTH-BASED BIDDING: Rich clubs will authorize massive spending caps
                         let maxCommitment = Math.floor(c.money * 0.4);
                         if (c.money > 500000) maxCommitment = Math.floor(c.money * 0.6); // Rich clubs throw their weight around 
-                        bidders.push({ club: c, maxBid: maxCommitment, persona: persona, willUpgrade: willUpgrade, worstId: worstId });
+                        bidders.push({ club: c, maxBid: maxCommitment, persona: persona, willUpgrade: false, worstId: null });
                     }
                 });
 
@@ -129,21 +153,6 @@ window.AITransfers = {
                     if (finalSalary > winner.maxBid) finalSalary = winner.maxBid;
 
                     winner.club.money -= 10000; // Sign-on fee
-
-                    // If it's a roster upgrade, fire the worst fighter to make room
-                    if (winner.willUpgrade && winner.worstId) {
-                        let worstIdx = winner.club.fighter_ids.indexOf(winner.worstId);
-                        if (worstIdx !== -1) {
-                            winner.club.fighter_ids.splice(worstIdx, 1);
-                            let worstFighter = gs.getFighter(winner.worstId);
-                            if (worstFighter) {
-                                worstFighter.club_id = null;
-                                if (worstFighter.contract) worstFighter.contract.happiness = 50;
-                                gs.transferPool.push(worstFighter);
-                                gs.addNews("transfer", `✂️ ${winner.club.name} released ${worstFighter.name} to make room for a huge incoming signing!`);
-                            }
-                        }
-                    }
 
                     target.club_id = winner.club.id;
                     target.contract = { salary: finalSalary, seasons_remaining: 3, win_bonus: Math.floor(finalSalary * 0.1), release_clause: finalSalary * 10, happiness: 100, demand_triggered: false };
@@ -185,7 +194,7 @@ window.AITransfers = {
                 if (earners.length > 0) {
                     let sacrifice = earners[0];
                     sacrifice.transfer_listed = true;
-                    let ovr = (sacrifice.core_stats.power + sacrifice.core_stats.technique + sacrifice.core_stats.speed) / 3;
+                    let ovr = this._getFullOvr(sacrifice);
                     let fireSaleFee = Math.floor(ovr * 400); // Massive discount
 
                     if (!gs.listedForTransfer) gs.listedForTransfer = [];
@@ -203,7 +212,7 @@ window.AITransfers = {
                     let f = gs.getFighter(fId);
                     if (f) {
                         let isHighPotential = (f.potential > 70) || (f.age < 22 && f.potential > 60);
-                        let ovr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
+                        let ovr = this._getFullOvr(f);
                         if (!isHighPotential && ovr < worstOvr) {
                             worstOvr = ovr;
                             worstId = fId;
@@ -234,30 +243,42 @@ window.AITransfers = {
                 }
             }
 
-            // 3. AI Poaching via Release Clauses (AGGRESSIVE UPGRADES)
-            // If the Club is rich and has space, they will actively look to blow their cash on stealing rival stars
+            // 3. AI Poaching via Release Clauses (STRATEGIC UPGRADES)
+            // Rich clubs actively seek to steal rival stars that fill squad needs
             if (club.fighter_ids.length < 8 && club.money > 250000 && Math.random() < 0.15) {
                 let poachTargets = [];
-                let highestOvr = Math.max(0, ...club.fighter_ids.map(id => { let f = gs.getFighter(id); return f ? (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3 : 0; }));
+                let highestOvr = Math.max(0, ...club.fighter_ids.map(id => { let f = gs.getFighter(id); return f ? this._getFullOvr(f) : 0; }));
+                const poachNeeds = this._getSquadStyleNeeds(club);
 
                 Object.values(gs.fighters).forEach(f => {
                     if (f.club_id && f.club_id !== club.id && !f.retired && f.contract && f.contract.release_clause) {
-                        // Can we afford the buyout + a premium salary?
                         let requiredCash = f.contract.release_clause + 50000;
                         if (club.money > requiredCash) {
-                            let fOvr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
-                            // Only poach if they are a massive upgrade
-                            if (fOvr > highestOvr || (fOvr > 75 && f.age < 24)) {
-                                poachTargets.push(f);
-                            }
+                            let fOvr = this._getFullOvr(f);
+                            let poachScore = 0;
+
+                            // Raw quality upgrade
+                            if (fOvr > highestOvr) poachScore += 40;
+                            else if (fOvr > highestOvr - 5) poachScore += 20;
+
+                            // Young star premium
+                            if (fOvr > 70 && f.age < 24) poachScore += 30;
+                            if ((f.potential || 60) > 80 && f.age <= 22) poachScore += 25;
+
+                            // Style gap filling
+                            const fAffs = f.style_affinities || {};
+                            ['boxing', 'naked_wrestling', 'catfight', 'sexfight'].forEach(style => {
+                                if ((fAffs[style] || 0) >= 70 && poachNeeds[style] === 'high') poachScore += 20;
+                            });
+
+                            if (poachScore >= 20) poachTargets.push({ fighter: f, score: poachScore, ovr: fOvr });
                         }
                     }
                 });
 
                 if (poachTargets.length > 0) {
-                    // Sort by OVR desc, poach the best one we can afford
-                    poachTargets.sort((a, b) => (b.core_stats.power + b.core_stats.technique + b.core_stats.speed) - (a.core_stats.power + a.core_stats.technique + a.core_stats.speed));
-                    let target = poachTargets[0];
+                    poachTargets.sort((a, b) => b.score - a.score);
+                    let target = poachTargets[0].fighter;
                     let buyout = target.contract.release_clause;
 
                     if (target.club_id === gs.playerClubId) {
@@ -290,12 +311,12 @@ window.AITransfers = {
                 const hasListedOwn = (gs.listedForTransfer || []).some(l => l.listedBy === club.id);
                 // Need C: Squad quality below league average
                 const clubAvgOvr35 = rosterSize35 > 0
-                    ? rosterFighters35.reduce((sum, f) => sum + (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3, 0) / rosterSize35
+                    ? rosterFighters35.reduce((sum, f) => sum + this._getFullOvr(f), 0) / rosterSize35
                     : 0;
                 const leagueAvgOvr35 = (() => {
                     const avgs = Object.values(gs.clubs).map(c => {
                         const fs35 = (c.fighter_ids || []).map(id => gs.getFighter(id)).filter(Boolean);
-                        return fs35.length > 0 ? fs35.reduce((s, f) => s + (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3, 0) / fs35.length : 0;
+                        return fs35.length > 0 ? fs35.reduce((s, f) => s + this._getFullOvr(f), 0) / fs35.length : 0;
                     }).filter(v => v > 0);
                     return avgs.length > 0 ? avgs.reduce((a, b) => a + b, 0) / avgs.length : 65;
                 })();
@@ -307,8 +328,8 @@ window.AITransfers = {
 
                 if (hasAnyNeed || rosterSize35 < 6) {
                     const persona35 = club.ai_persona || 'balanced';
-                    const highestOvr35 = rosterSize35 > 0 ? Math.max(...rosterFighters35.map(f => (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3)) : 0;
-                    const lowestOvr35 = rosterSize35 > 0 ? Math.min(...rosterFighters35.map(f => (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3)) : 0;
+                    const highestOvr35 = rosterSize35 > 0 ? Math.max(...rosterFighters35.map(f => this._getFullOvr(f))) : 0;
+                    const lowestOvr35 = rosterSize35 > 0 ? Math.min(...rosterFighters35.map(f => this._getFullOvr(f))) : 0;
                     let bestCandidate35 = null, bestScore35 = -1;
 
                     gs.listedForTransfer.forEach(listing => {
@@ -317,7 +338,7 @@ window.AITransfers = {
                         if (!f || !f.club_id || f.club_id === club.id) return;
                         if (f.club_id === gs.playerClubId) return;
                         if (rosterSize35 >= 8) return;
-                        const fOvr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
+                        const fOvr = this._getFullOvr(f);
                         if (club.money < listing.askingFee + wageBill * 0.6) return;
                         if (!needsMoreFighters && fOvr < lowestOvr35 - 5) return;
                         let score = 0;
@@ -351,30 +372,52 @@ window.AITransfers = {
                 }
             }
 
-
-            // 4. AI Bosman Poaching (End of Contract stealing)
-            if (club.fighter_ids.length < 8 && club.money > wageBill * 1.5 && Math.random() < 0.08) {
+            // 4. AI Bosman Poaching (End of Contract stealing — strategic)
+            if (club.fighter_ids.length < 8 && club.money > wageBill * 1.5 && Math.random() < 0.10) {
                 let bosmanTargets = [];
+                const bosmanNeeds = this._getSquadStyleNeeds(club);
+                const clubHighOvr = Math.max(0, ...club.fighter_ids.map(id => { let f = gs.getFighter(id); return f ? this._getFullOvr(f) : 0; }));
+
                 Object.values(gs.fighters).forEach(f => {
                     if (f.club_id && f.club_id !== club.id && !f.retired && f.contract && f.contract.seasons_remaining === 1 && !f.contract.renewed_this_offseason) {
                         let alreadySigned = gs.pendingBosmanMoves && gs.pendingBosmanMoves.find(m => m.fighterId === f.id);
-                        if (!alreadySigned) bosmanTargets.push(f);
+                        if (alreadySigned) return;
+
+                        let bScore = 0;
+                        let fOvr = this._getFullOvr(f);
+                        if (fOvr > clubHighOvr - 5) bScore += 30;
+                        if (fOvr > clubHighOvr) bScore += 20;
+                        if (f.age <= 25 && (f.potential || 60) > 70) bScore += 25;
+
+                        // Style gap bonus
+                        const fAffs = f.style_affinities || {};
+                        ['boxing', 'naked_wrestling', 'catfight', 'sexfight'].forEach(style => {
+                            if ((fAffs[style] || 0) >= 65 && bosmanNeeds[style] === 'high') bScore += 15;
+                        });
+
+                        if (bScore >= 20) bosmanTargets.push({ fighter: f, score: bScore, ovr: fOvr });
                     }
                 });
                 if (bosmanTargets.length > 0) {
-                    bosmanTargets.sort((a, b) => (b.core_stats.power + b.core_stats.technique + b.core_stats.speed) - (a.core_stats.power + a.core_stats.technique + a.core_stats.speed));
-                    let target = bosmanTargets[0];
-                    let tOvr = target.core_stats.power + target.core_stats.technique + target.core_stats.speed;
-                    let highestOvr = Math.max(0, ...club.fighter_ids.map(id => { let f = gs.getFighter(id); return f ? (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) : 0; }));
-                    if (tOvr > highestOvr - 15) {
-                        let offer = Math.floor((tOvr / 3) * 220 + 20000);
-                        if (offer < club.money * 0.3) { // Only if they can afford the contract
-                            if (!gs.pendingBosmanMoves) gs.pendingBosmanMoves = [];
-                            gs.pendingBosmanMoves.push({ fighterId: target.id, fromClubId: target.club_id, salary: offer, agreementWeek: gs.week, agreementSeason: gs.season, toClubId: club.id });
-                            let oldClub = gs.getClub(target.club_id);
-                            gs.addNews("transfer", `💣 BOMBSHELL: ${club.name} pre-signed ${target.name} from ${oldClub ? oldClub.name : 'another club'} on a Bosman transfer for next season!`);
-                            if (target.club_id === gs.playerClubId) {
-                                if (window.UIComponents && window.UIComponents.showModal) window.UIComponents.showModal("Fighter Poached!", `${club.name} agreed to terms with ${target.name} because she was in her final contract year. She leaves at the end of the season.`, "danger");
+                    bosmanTargets.sort((a, b) => b.score - a.score);
+                    let target = bosmanTargets[0].fighter;
+                    let tOvr = this._getFullOvr(target);
+                    let offer = Math.floor(tOvr * 220 + 20000);
+                    if (offer < club.money * 0.3) {
+                        if (!gs.pendingBosmanMoves) gs.pendingBosmanMoves = [];
+                        gs.pendingBosmanMoves.push({
+                            fighterId: target.id,
+                            fromClubId: target.club_id,
+                            salary: offer,
+                            agreementWeek: gs.week,
+                            agreementSeason: gs.season,
+                            toClubId: club.id
+                        });
+                        let oldClub = gs.getClub(target.club_id);
+                        gs.addNews("transfer", `💣 BOMBSHELL: ${club.name} pre-signed ${target.name} from ${oldClub ? oldClub.name : 'another club'} on a Bosman transfer for next season!`);
+                        if (target.club_id === gs.playerClubId) {
+                            if (window.UIComponents && window.UIComponents.showModal) {
+                                window.UIComponents.showModal("Fighter Poached!", `${club.name} agreed to terms with ${target.name} because she was in her final contract year. She leaves at the end of the season.`, "danger");
                             }
                         }
                     }

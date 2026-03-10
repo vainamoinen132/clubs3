@@ -182,20 +182,16 @@ window.AIEngine = {
 
     // ─── NPC TRAINING ────────────────────────────────────────────────────────
     /**
-     * FM-style passive training for NPC clubs each week.
-     * Intensity is persona-driven. Uses the same intensity table as TrainingEngine.
+     * Smart AI training for NPC clubs each week.
+     * Instead of random stat selection, AI analyzes each fighter's profile:
+     * 1. Identifies the fighter's best style affinity → trains the stats that power it
+     * 2. Shores up critical weaknesses (resilience, composure, endurance)
+     * 3. Adjusts intensity per-fighter based on fatigue, injury risk, and upcoming matches
+     * 4. Young high-potential fighters get pushed harder; veterans get lighter sessions
+     * 5. Persona influences training philosophy
      */
     _runAITraining(club) {
         const gs = window.GameState;
-        const intensityByPersona = {
-            big_spender: 7,
-            talent_developer: 9,
-            brand_first: 4,
-            tactician: 7,
-            saboteur: 3,
-            balanced: 6
-        };
-        const intensity = intensityByPersona[club.ai_persona || 'balanced'] || 6;
 
         const intensityTable = {
             1: { minG: 0, maxG: 0, fatigue: -20, injPct: 0.0 },
@@ -209,9 +205,10 @@ window.AIEngine = {
             9: { minG: 3, maxG: 4, fatigue: 28, injPct: 10.0 },
             10: { minG: 3, maxG: 5, fatigue: 32, injPct: 14.0 }
         };
-        const tbl = intensityTable[intensity];
+
         const gymLevel = club.facilities?.gym || 1;
         const gymMult = [1.0, 1.0, 1.2, 1.4, 1.7][Math.min(gymLevel, 4)];
+        const persona = club.ai_persona || 'balanced';
 
         // Staff head coach bonus
         let staffBonus = 0;
@@ -220,29 +217,111 @@ window.AIEngine = {
             staffBonus += gs.staff[hcId].passive_bonus.all_training_gain;
         }
 
-        const focusPools = [
-            ['power', 'technique', 'speed', 'control', 'endurance'],  // general A
-            ['technique', 'composure', 'speed'],                        // technical
-            ['power', 'aggression'],                                    // power
-            ['resilience', 'endurance']                                 // conditioning
-        ];
+        // Style → stat mapping for targeted training
+        const styleTrainingMap = {
+            boxing:           ['technique', 'speed', 'composure'],
+            naked_wrestling:  ['control', 'power', 'resilience'],
+            catfight:         ['aggression', 'power', 'endurance'],
+            sexfight:         ['composure', 'presence', 'control']
+        };
+
+        // Check if club has a match this week (train lighter if so)
+        const hasMatchThisWeek = gs.schedule.some(m =>
+            m.week === gs.week && (m.home === club.id || m.away === club.id)
+        );
 
         club.fighter_ids.forEach(id => {
             const f = gs.getFighter(id);
             if (!f) return;
 
-            const fat = f.dynamic_state.fatigue;
-            // Skip very exhausted fighters
-            if (fat > 80) return;
+            const fat = f.dynamic_state.fatigue || 0;
+            const hasInjury = f.dynamic_state.injuries && f.dynamic_state.injuries.length > 0;
 
-            const effMult = fat <= 30 ? 1.0 : fat <= 60 ? 0.65 : 0.30;
-            const pool = focusPools[Math.floor(Math.random() * focusPools.length)];
-            const stat = pool[Math.floor(Math.random() * pool.length)];
+            // ── SMART REST: Skip injured fighters entirely ──
+            if (hasInjury) return;
+
+            // ── SMART REST: Very exhausted fighters get rest, not training ──
+            if (fat > 75) return;
+
+            // ── PER-FIGHTER INTENSITY CALCULATION ──
+            let baseIntensity;
+            const age = f.age || 25;
             const pa = f.potential || f.natural_ceiling || 80;
+            const avgOvr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
+            const growthRoom = pa - avgOvr;
+
+            // Young fighters with high potential → push hard
+            if (age <= 22 && growthRoom > 15) {
+                baseIntensity = persona === 'talent_developer' ? 9 : 8;
+            }
+            // Prime fighters with little growth room → moderate maintenance
+            else if (age >= 23 && age <= 28 && growthRoom < 8) {
+                baseIntensity = 5;
+            }
+            // Veterans → light training to avoid injuries
+            else if (age >= 30) {
+                baseIntensity = 3;
+            }
+            // Default based on persona
+            else {
+                const intensityByPersona = {
+                    big_spender: 7, talent_developer: 8, brand_first: 5,
+                    tactician: 7, saboteur: 4, balanced: 6
+                };
+                baseIntensity = intensityByPersona[persona] || 6;
+            }
+
+            // Reduce intensity if fatigued
+            if (fat > 60) baseIntensity = Math.max(2, baseIntensity - 3);
+            else if (fat > 40) baseIntensity = Math.max(3, baseIntensity - 1);
+
+            // Reduce intensity on match weeks (save energy for the fight)
+            if (hasMatchThisWeek) baseIntensity = Math.max(2, baseIntensity - 2);
+
+            const intensity = Math.max(1, Math.min(10, baseIntensity));
+            const tbl = intensityTable[intensity];
+
+            // ── SMART STAT SELECTION ──
+            // Step 1: Find the fighter's best style affinity
+            const affinities = f.style_affinities || {};
+            let bestStyle = 'boxing';
+            let bestAff = 0;
+            for (const [style, aff] of Object.entries(affinities)) {
+                if (aff > bestAff) { bestAff = aff; bestStyle = style; }
+            }
+
+            // Step 2: Build a weighted stat pool based on the fighter's profile
+            const targetStats = [];
+            const styleStats = styleTrainingMap[bestStyle] || ['technique', 'speed', 'composure'];
+
+            // Primary: stats that power their best style (60% weight)
+            styleStats.forEach(s => { targetStats.push(s); targetStats.push(s); targetStats.push(s); });
+
+            // Secondary: shore up critical defensive stats if weak (25% weight)
+            if ((f.core_stats.resilience || 50) < 55) targetStats.push('resilience', 'resilience');
+            if ((f.core_stats.composure || 50) < 50) targetStats.push('composure');
+            if ((f.core_stats.endurance || 50) < 50) targetStats.push('endurance');
+
+            // Tertiary: persona-specific preferences (15% weight)
+            if (persona === 'saboteur') targetStats.push('aggression');
+            if (persona === 'brand_first') targetStats.push('presence');
+            if (persona === 'talent_developer') {
+                // Train the stat with most headroom to maximize growth
+                let maxHeadroom = 0; let maxStat = 'technique';
+                for (const s of Object.keys(f.core_stats)) {
+                    const hr = pa - (f.core_stats[s] || 0);
+                    if (hr > maxHeadroom) { maxHeadroom = hr; maxStat = s; }
+                }
+                targetStats.push(maxStat);
+            }
+
+            // Step 3: Pick the training stat from the weighted pool
+            const stat = targetStats[Math.floor(Math.random() * targetStats.length)];
             const current = f.core_stats[stat] || 0;
             const headroom = pa - current;
 
             if (headroom > 0) {
+                const effMult = fat <= 30 ? 1.0 : fat <= 60 ? 0.65 : 0.30;
                 const headMult = Math.max(0.05, Math.min(1.0, headroom / 25));
                 const raw = tbl.minG + Math.random() * (tbl.maxG - tbl.minG);
                 let gain = Math.floor(raw * effMult * gymMult * headMult + staffBonus);
@@ -250,10 +329,10 @@ window.AIEngine = {
                 f.core_stats[stat] = Math.min(pa, current + gain);
             }
 
-            // Fatigue
+            // Fatigue cost
             f.dynamic_state.fatigue = Math.max(0, Math.min(100, fat + tbl.fatigue));
 
-            // Injury roll (only if high fatigue)
+            // Injury roll (only if high fatigue after training)
             if (f.dynamic_state.fatigue > 75 && Math.random() * 100 < tbl.injPct) {
                 this._inflictAITrainingInjury(f, gs);
             }
@@ -276,8 +355,11 @@ window.AIEngine = {
 
     // ─── NPC ROSTER MANAGEMENT ───────────────────────────────────────────────
     /**
-     * 1. If over 8 fighters, list the weakest.
-     * 2. If a fighter is unhappy/restless, proactively list them (FM-style).
+     * Holistic roster evaluation for NPC clubs. Considers:
+     * 1. Overall fighter value (OVR + potential + age + style coverage + form)
+     * 2. Squad balance (style diversity, age distribution)
+     * 3. Contract economics (salary vs contribution)
+     * 4. Unhappy/restless fighters
      */
     _runAIRosterManagement(club) {
         const gs = window.GameState;
@@ -286,38 +368,102 @@ window.AIEngine = {
         // Safety: Don't list anyone if we already have a tiny squad
         if (club.fighter_ids.length <= 2) return;
 
-        // --- A. Excess roster (8+): sell weakest ---
+        // ── Compute holistic value for each fighter ──
+        const evaluateFighter = (f) => {
+            if (!f) return -999;
+            let value = 0;
+
+            // True OVR (all 9 stats)
+            const totalStats = f.core_stats.power + f.core_stats.technique + f.core_stats.speed +
+                f.core_stats.control + f.core_stats.endurance + f.core_stats.resilience +
+                f.core_stats.aggression + f.core_stats.composure + f.core_stats.presence;
+            const ovr = totalStats / 9;
+            value += ovr * 1.0;
+
+            // Potential/growth room (young high-potential fighters are more valuable)
+            const pa = f.potential || f.natural_ceiling || 70;
+            const growthRoom = pa - ovr;
+            if (f.age <= 22 && growthRoom > 15) value += 20; // Wonderkid premium
+            else if (f.age <= 24 && growthRoom > 10) value += 10;
+
+            // Age curve: prime (23-28) = neutral, young = bonus, old = penalty
+            if (f.age <= 22) value += 8;
+            else if (f.age >= 30) value -= 10;
+            else if (f.age >= 32) value -= 20;
+
+            // Style coverage: fighters with high affinity in multiple styles are versatile
+            const affs = Object.values(f.style_affinities || {});
+            const maxAff = Math.max(...affs, 0);
+            if (maxAff >= 80) value += 10; // Specialist value
+            const versatileCount = affs.filter(a => a >= 60).length;
+            if (versatileCount >= 3) value += 5; // Versatility bonus
+
+            // Form and morale
+            if ((f.dynamic_state.form || 50) > 70) value += 5;
+            if ((f.dynamic_state.morale || 50) < 30) value -= 10;
+
+            // Win record contribution
+            value += Math.min((f.dynamic_state.wins || 0) * 1.5, 15);
+
+            // Salary efficiency penalty: high salary relative to OVR = bad deal
+            if (f.contract && f.contract.salary > 0) {
+                const salaryPer = f.contract.salary / Math.max(ovr, 1);
+                if (salaryPer > 600) value -= 8; // Overpaid
+                if (salaryPer > 1000) value -= 12; // Massively overpaid
+            }
+
+            return value;
+        };
+
+        // --- A. Excess roster (8+): list the least valuable fighter ---
         if (club.fighter_ids.length >= 8) {
-            const sorted = club.fighter_ids
-                .map(id => gs.getFighter(id)).filter(Boolean)
-                .sort((a, b) => {
-                    const aOvr = (a.core_stats.power + a.core_stats.technique + a.core_stats.speed) / 3;
-                    const bOvr = (b.core_stats.power + b.core_stats.technique + b.core_stats.speed) / 3;
-                    return aOvr - bOvr;
-                });
-            const weakest = sorted[0];
-            if (weakest && !weakest.transfer_listed) {
-                const fee = Math.floor(((weakest.core_stats.power + weakest.core_stats.technique + weakest.core_stats.speed) / 3) * 600);
+            const scored = club.fighter_ids
+                .map(id => ({ id, fighter: gs.getFighter(id), value: evaluateFighter(gs.getFighter(id)) }))
+                .filter(x => x.fighter && !x.fighter.transfer_listed)
+                .sort((a, b) => a.value - b.value);
+
+            const weakest = scored[0];
+            if (weakest && weakest.fighter) {
+                const ovr3 = (weakest.fighter.core_stats.power + weakest.fighter.core_stats.technique + weakest.fighter.core_stats.speed) / 3;
+                const fee = Math.floor(ovr3 * 600);
                 gs.listedForTransfer.push({ fighterId: weakest.id, listedOnWeek: gs.week, askingFee: fee, listedBy: club.id });
-                weakest.transfer_listed = true;
-                gs.addNews('transfer', `📋 ${club.name} has listed ${weakest.name} for transfer (squad rotation).`);
+                weakest.fighter.transfer_listed = true;
+                gs.addNews('transfer', `📋 ${club.name} has listed ${weakest.fighter.name} for transfer (squad optimization).`);
             }
         }
 
-        // --- B. Fighter-initiated listing: restless/wants_out fighters ---
-        // Only runs ~5% of weeks to avoid flooding the global list
-        if (Math.random() > 0.05) return;
+        // --- B. Proactive listing of overpaid underperformers (even below 8) ---
+        if (club.fighter_ids.length >= 5 && Math.random() < 0.08) {
+            const fighters = club.fighter_ids.map(id => gs.getFighter(id)).filter(Boolean);
+            const avgValue = fighters.reduce((s, f) => s + evaluateFighter(f), 0) / fighters.length;
+
+            fighters.forEach(f => {
+                if (f.transfer_listed || !f.contract) return;
+                const val = evaluateFighter(f);
+                // List if significantly below squad average AND overpaid
+                if (val < avgValue - 15 && f.contract.salary > 20000) {
+                    const ovr3 = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
+                    const fee = Math.floor(ovr3 * 700);
+                    const alreadyListed = gs.listedForTransfer.find(l => l.fighterId === f.id);
+                    if (!alreadyListed) {
+                        gs.listedForTransfer.push({ fighterId: f.id, listedOnWeek: gs.week, askingFee: fee, listedBy: club.id });
+                        f.transfer_listed = true;
+                        gs.addNews('transfer', `📋 ${club.name} has listed ${f.name} for transfer (underperforming & overpaid).`);
+                    }
+                }
+            });
+        }
+
+        // --- C. Fighter-initiated listing: restless/wants_out fighters ---
+        if (Math.random() > 0.08) return; // ~8% of weeks
 
         club.fighter_ids.forEach(id => {
             const f = gs.getFighter(id);
             if (!f || f.transfer_listed || !f.contract) return;
 
-            // Reuse the willingness scorer from AITransfers
             const w = window.AITransfers ? window.AITransfers._computeFighterWillingness(f) : null;
             if (!w) return;
 
-            // 'wants_out': fighter demands to be listed (club obliges to avoid unrest)
-            // 'restless':  club proactively lists if contract is also in final year
             const finalYear = f.contract.seasons_remaining <= 1;
             let shouldList = false;
             let reason = '';
@@ -326,15 +472,13 @@ window.AIEngine = {
                 shouldList = true;
                 reason = w.reasons[0] || 'unhappy';
             } else if (w.level === 'restless' && finalYear) {
-                shouldList = Math.random() < 0.15; // 15% chance to list rather than hold
+                shouldList = Math.random() < 0.20;
                 reason = 'final contract year & restless';
             }
 
             if (shouldList) {
                 const ovr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed) / 3;
-                const fee = Math.floor(ovr * 800); // slight premium over "sell" price
-
-                // Don't double-list
+                const fee = Math.floor(ovr * 800);
                 const alreadyListed = gs.listedForTransfer.find(l => l.fighterId === f.id);
                 if (!alreadyListed) {
                     gs.listedForTransfer.push({ fighterId: f.id, listedOnWeek: gs.week, askingFee: fee, listedBy: club.id });
@@ -345,50 +489,97 @@ window.AIEngine = {
         });
     },
 
-    // AI Clubs occasionally risk their fighters in the Underground for cash
+    // ─── NPC UNDERGROUND LOGIC ────────────────────────────────────────────────
+    /**
+     * Smart underground participation: AI evaluates risk/reward before sending fighters.
+     * Considers: financial need, fighter OVR vs tier difficulty, fatigue, upcoming schedule.
+     */
     _runAIUndergroundLogic(club) {
         const gs = window.GameState;
         if (!window.UndergroundEngine) return;
 
-        // Base 5% chance, goes up to 25% if they are broke
-        let riskChance = 0.05;
-        if (club.money < 20000) riskChance = 0.25;
-        if (club.persona === 'Aggressive') riskChance += 0.10;
-        if (club.persona === 'Conservative') riskChance -= 0.04;
+        const persona = club.ai_persona || 'balanced';
 
-        if (Math.random() < riskChance && club.fighter_ids.length > 0) {
-            // Find a healthy fighter not currently injured
-            let available = club.fighter_ids.map(id => gs.getFighter(id))
-                .filter(f => f && f.dynamic_state.health > 85 && !f.dynamic_state.injuries?.length);
+        // ── Risk appetite based on financial state + persona ──
+        let riskChance = 0.05; // base 5%
+        if (club.money < 20000) riskChance = 0.30; // desperate
+        else if (club.money < 50000) riskChance = 0.15; // struggling
+        if (persona === 'saboteur') riskChance += 0.12;
+        if (persona === 'big_spender') riskChance += 0.05;
+        if (persona === 'talent_developer') riskChance -= 0.04; // cautious with fighters
+        if (persona === 'brand_first') riskChance -= 0.03; // reputational risk
 
-            if (available.length > 0) {
-                // Pick one randomly
-                let chosen = available[Math.floor(Math.random() * available.length)];
+        if (Math.random() >= riskChance || club.fighter_ids.length === 0) return;
 
-                // AI generates a random underground opponent (Tier 1 or 2)
-                let opp = window.UndergroundEngine.generateFighter(Math.random() < 0.7 ? 1 : 2);
+        // ── Smart fighter selection: pick someone who can win safely ──
+        let available = club.fighter_ids.map(id => gs.getFighter(id)).filter(f => {
+            if (!f) return false;
+            if (f.dynamic_state.injuries && f.dynamic_state.injuries.length > 0) return false;
+            if ((f.dynamic_state.fatigue || 0) > 60) return false; // don't risk tired fighters
+            if ((f.dynamic_state.stress || 0) > 70) return false; // don't risk stressed fighters
+            return true;
+        });
 
-                // Run an instant match (but from the AI club's perspective)
-                let res = window.UndergroundEngine.simAITournamentMatch(chosen, opp);
+        if (available.length === 0) return;
 
-                let aiWon = res.winner.id === chosen.id;
+        // Check if club has a league match this week or next (don't risk key fighters)
+        const hasUpcomingMatch = gs.schedule.some(sm =>
+            (sm.week === gs.week || sm.week === gs.week + 1) &&
+            (sm.home === club.id || sm.away === club.id) && !sm.winnerId
+        );
 
-                if (aiWon) {
-                    club.money += opp.payout_base;
-                    chosen.dynamic_state.stress = Math.min(100, chosen.dynamic_state.stress + 5);
-                } else {
-                    chosen.dynamic_state.stress = Math.min(100, chosen.dynamic_state.stress + 20);
-                }
+        // Score candidates by combat ability and expendability
+        const scored = available.map(f => {
+            const ovr = (f.core_stats.power + f.core_stats.technique + f.core_stats.speed +
+                f.core_stats.resilience + f.core_stats.endurance + f.core_stats.aggression) / 6;
+            let score = ovr;
 
-                // Cruelty and severe injury logic is automatically handled by the engine's mercy phase logic 
-                // which was embedded inside simAITournamentMatch. 
+            // Prefer sending non-star fighters if match is upcoming
+            if (hasUpcomingMatch) {
+                const pa = f.potential || 70;
+                if (pa > 80 || ovr > 75) score -= 30; // protect stars
             }
+
+            // Veterans with low potential are expendable
+            if (f.age >= 28 && (f.potential || 70) < 65) score += 10;
+
+            // High aggression fighters thrive in underground
+            score += ((f.core_stats.aggression || 50) - 50) * 0.3;
+
+            return { fighter: f, score, ovr };
+        }).sort((a, b) => b.score - a.score);
+
+        const best = scored[0];
+        if (!best) return;
+
+        // ── Smart tier selection: match opponent difficulty to our fighter's OVR ──
+        let tier;
+        if (best.ovr >= 80) tier = Math.random() < 0.5 ? 2 : 3; // strong fighters take harder tiers for more pay
+        else if (best.ovr >= 65) tier = Math.random() < 0.7 ? 1 : 2;
+        else tier = 1; // weak fighters stick to tier 1
+
+        // Desperate clubs take bigger risks
+        if (club.money < 15000) tier = Math.min(tier + 1, 3);
+
+        let opp = window.UndergroundEngine.generateFighter(tier);
+        let res = window.UndergroundEngine.simAITournamentMatch(best.fighter, opp);
+        let aiWon = res.winner.id === best.fighter.id;
+
+        if (aiWon) {
+            club.money += opp.payout_base;
+            best.fighter.dynamic_state.stress = Math.min(100, (best.fighter.dynamic_state.stress || 0) + 5);
+        } else {
+            best.fighter.dynamic_state.stress = Math.min(100, (best.fighter.dynamic_state.stress || 0) + 20);
         }
     },
 
     _simulateGhostMatch(m) {
         const gs = window.GameState;
         let pFighterId = m.home === gs.playerClubId ? m.homeFighter : m.awayFighter;
+
+        // Declare club refs at function scope so tactics code can access them
+        let hClub = gs.getClub(m.home);
+        let aClub = gs.getClub(m.away);
 
         // If player match hasn't been played, we can't ghost it yet (handled by UI flow)
         if (m.home === gs.playerClubId || m.away === gs.playerClubId) {
@@ -397,14 +588,14 @@ window.AIEngine = {
 
         // For pure AI vs AI:
         if (!m.winnerId) {
-            let hClub = gs.getClub(m.home);
-            let aClub = gs.getClub(m.away);
 
             if (!hClub || !aClub) return;
 
-            // Smart AI Selection: style affinity + OVR + rotation + rivalry awareness
-            const getSmartFighter = (club, matchStyle, opponentClub) => {
-                // Step 1: filter out injured and exhausted fighters
+            // ── SMART AI FIGHTER SELECTION ─────────────────────────────────
+            // Evaluates: style affinity, OVR, fatigue management, schedule lookahead,
+            // counter-picking, rotation, rivalry awareness, morale, and form.
+            const getSmartFighter = (club, matchStyle, opponentClub, opponentFighterId) => {
+                // Step 1: filter out injured and heavily exhausted fighters
                 let available = club.fighter_ids.map(id => gs.getFighter(id)).filter(f => {
                     if (!f) return false;
                     if (f.dynamic_state.injuries && f.dynamic_state.injuries.length > 0) return false;
@@ -413,56 +604,68 @@ window.AIEngine = {
                 });
 
                 // Fallback: if everyone is injured/exhausted, use anyone with lowest fatigue
-                if (available.length === 0) available = club.fighter_ids.map(id => gs.getFighter(id)).filter(Boolean);
+                if (available.length === 0) {
+                    available = club.fighter_ids.map(id => gs.getFighter(id)).filter(Boolean)
+                        .sort((a, b) => (a.dynamic_state.fatigue || 0) - (b.dynamic_state.fatigue || 0));
+                }
 
-                // (Removed the Strict Rookie Veto System, let the true OVR + Style Affinity algorithm evaluate everyone natively)
+                // Schedule lookahead: count how many more matches this club has in the next 2 weeks
+                const upcomingMatches = gs.schedule.filter(sm =>
+                    sm.week > gs.week && sm.week <= gs.week + 2 &&
+                    (sm.home === club.id || sm.away === club.id) && !sm.winnerId
+                ).length;
+
+                // Get opponent fighter for counter-scoring (if already selected)
+                const oppFighter = opponentFighterId ? gs.getFighter(opponentFighterId) : null;
 
                 // Step 2: score each available fighter
-                const scoreFighter = (id) => {
-                    let f = gs.getFighter(id);
+                const scoreFighter = (f) => {
                     if (!f) return -999;
-
                     let score = 0;
 
-                    // Calculate True OVR across all core combat stats for a fully accurate baseline
-                    let totalStats = f.core_stats.power + f.core_stats.technique + f.core_stats.speed + f.core_stats.control + f.core_stats.endurance + f.core_stats.resilience + f.core_stats.aggression + f.core_stats.composure + f.core_stats.presence;
+                    // ── TRUE OVR (all 9 stats) ──
+                    let totalStats = f.core_stats.power + f.core_stats.technique + f.core_stats.speed +
+                        f.core_stats.control + f.core_stats.endurance + f.core_stats.resilience +
+                        f.core_stats.aggression + f.core_stats.composure + f.core_stats.presence;
                     let trueOvr = totalStats / 9;
                     score += trueOvr * 1.0;
 
-                    // Evaluate Match Style Affinity (Heavily increased weight to encourage specialists)
-                    const styleMap = {
-                        'boxing': 'boxing',
-                        'naked_wrestling': 'naked_wrestling',
-                        'catfight': 'catfight',
-                        'sexfight': 'sexfight',
-                        'kickboxing': 'kickboxing',
-                        'submission': 'submission'
-                    };
-                    let affinityKey = styleMap[matchStyle];
-                    let affinity = 50;
-                    if (affinityKey && f.style_affinities) {
-                        affinity = f.style_affinities[affinityKey] || 50;
-                    }
+                    // ── STYLE AFFINITY (critical for match performance) ──
+                    let affinity = (f.style_affinities || {})[matchStyle] || 50;
+                    score += affinity * 0.6;
 
-                    // Add standard affinity curve
-                    score += affinity * 0.6; // Previously 0.15 (massively undervalued)
+                    // Elite Mastery detection (90+ affinity = 10% global stat boost in sim_engine)
+                    if (affinity >= 90) score += trueOvr * 0.3;
 
-                    // Elite Mastery Buff detection
-                    // In sim_engine, 90+ affinity grants a massive 10% global stat boost. AI must recognize this!
-                    if (affinity >= 90) {
-                        score += (trueOvr * 0.3); // Massive valuation jump to prioritize sending Elite Masters
-                    }
-
-                    // Fatigue Penalty (fresher fighters score higher)
+                    // ── FATIGUE MANAGEMENT ──
                     let fatigue = f.dynamic_state.fatigue || 0;
                     score -= fatigue * 0.6;
 
-                    // Form bonus (win streaks carry momentum)
-                    let streak = f.dynamic_state.win_streak || 0;
-                    score += Math.min(streak * 2, 10);
+                    // If there are upcoming matches, penalize fatigued fighters more (save them)
+                    if (upcomingMatches >= 2 && fatigue > 40) score -= 10;
 
-                    // Rivalry boost — if this fighter has a bitter rival in the opponent club,
-                    // she is highly motivated to fight (simulates psychological stakes)
+                    // ── FORM & MORALE (hot fighters perform better) ──
+                    let form = f.dynamic_state.form || 50;
+                    score += (form - 50) * 0.15; // +/- based on form deviation from baseline
+
+                    let morale = f.dynamic_state.morale || 50;
+                    if (morale > 75) score += 5;
+                    if (morale < 30) score -= 8;
+
+                    // Win streak momentum
+                    let streak = f.dynamic_state.win_streak || 0;
+                    score += Math.min(streak * 3, 12);
+
+                    // Loss streak penalty (fighters on tilt are risky picks)
+                    let losses = f.dynamic_state.losses || 0;
+                    if (losses >= 3 && streak === 0) score -= 5;
+
+                    // ── COUNTER-PICKING (if opponent fighter is known) ──
+                    if (oppFighter && window.AITactics) {
+                        score += window.AITactics.getCounterScore(f, oppFighter, matchStyle);
+                    }
+
+                    // ── RIVALRY BOOST ──
                     if (opponentClub) {
                         opponentClub.fighter_ids.forEach(oppId => {
                             if (window.RelationshipEngine) {
@@ -474,7 +677,16 @@ window.AIEngine = {
                         });
                     }
 
-                    // High ego fighters constantly demand high-profile spotlight matches
+                    // ── ROTATION AWARENESS ──
+                    // Check if this fighter fought last week (penalize back-to-back usage)
+                    const lastWeekMatches = gs.schedule.filter(sm =>
+                        sm.week === gs.week - 1 && (sm.homeFighter === f.id || sm.awayFighter === f.id)
+                    );
+                    if (lastWeekMatches.length > 0 && available.length > 2) {
+                        score -= 8; // prefer rotating unless roster is tiny
+                    }
+
+                    // High ego fighters demand spotlight
                     if (f.dynamic_state.ego === 'High') score += 5;
 
                     return score;
@@ -482,12 +694,13 @@ window.AIEngine = {
 
                 // Step 3: sort by score, pick the top scorer
                 if (!available || available.length === 0) return null;
-                available.sort((a, b) => scoreFighter(b.id) - scoreFighter(a.id));
+                available.sort((a, b) => scoreFighter(b) - scoreFighter(a));
                 return available[0].id;
             };
 
-            m.homeFighter = getSmartFighter(hClub, m.style, aClub);
-            m.awayFighter = getSmartFighter(aClub, m.style, hClub);
+            // Home team picks first, then away can counter-pick
+            m.homeFighter = getSmartFighter(hClub, m.style, aClub, null);
+            m.awayFighter = getSmartFighter(aClub, m.style, hClub, m.homeFighter);
         }
 
         // If it's a player match that has been played, or an AI match where fighters were selected
@@ -511,9 +724,37 @@ window.AIEngine = {
         let af = window.GameState.getFighter(m.awayFighter);
 
         let sim = new MatchSimulation(hf, af, m.style, false);
+
+        // ── SMART TACTICS: Set initial stances based on matchup analysis ──
+        if (window.AITactics && hClub) {
+            sim.f1.stance = window.AITactics.getInitialStance(hClub, aClub, hf, af, m.style);
+        }
+        if (window.AITactics && aClub) {
+            sim.f2.stance = window.AITactics.getInitialStance(aClub, hClub, af, hf, m.style);
+        }
+
         sim.startMatch();
         while (!sim.winner) {
             sim.playRound();
+
+            // ── SMART TACTICS: Mid-match stance adjustments after each round ──
+            if (!sim.winner && window.AITactics) {
+                const f1Wins = sim.roundsWon.f1;
+                const f2Wins = sim.roundsWon.f2;
+
+                if (hClub) {
+                    sim.f1.stance = window.AITactics.getMidMatchStanceAdjustment(
+                        hClub, sim.f1, sim.f2, sim.f1.stance,
+                        { behindBy: Math.max(0, f2Wins - f1Wins), aheadBy: Math.max(0, f1Wins - f2Wins), roundNumber: sim.currentRoundNumber, myStreak: sim.streak.f1, oppStreak: sim.streak.f2 }
+                    );
+                }
+                if (aClub) {
+                    sim.f2.stance = window.AITactics.getMidMatchStanceAdjustment(
+                        aClub, sim.f2, sim.f1, sim.f2.stance,
+                        { behindBy: Math.max(0, f1Wins - f2Wins), aheadBy: Math.max(0, f2Wins - f1Wins), roundNumber: sim.currentRoundNumber, myStreak: sim.streak.f2, oppStreak: sim.streak.f1 }
+                    );
+                }
+            }
         }
 
         // Record winner
