@@ -23,8 +23,7 @@ window.ContractEngine = {
         });
 
         // Loop through unsigned free agents
-        gs.transferPool.forEach(id => {
-            let f = gs.getFighter(id);
+        gs.transferPool.forEach(f => {
             if (f && f.contract) {
                 this.calculateHappiness(f); // Keep them ticking
             }
@@ -475,8 +474,8 @@ window.ContractEngine = {
         f.contract.happiness = 50; // Reset as free agent
         f.contract.demand_triggered = false;
 
-        if (!gs.transferPool.includes(fighterId)) {
-            gs.transferPool.push(fighterId);
+        if (!gs.transferPool.find(p => p.id === fighterId)) {
+            gs.transferPool.push(f);
         }
 
         gs.addNews('club', `${playerClub.name} triggered the release clause for ${f.name} at a cost of $${f.contract.release_clause}.`);

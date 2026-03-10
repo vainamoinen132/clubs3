@@ -124,9 +124,5 @@ window.SaveSystem = {
     }
 };
 
-// Hook autosave into Advance Week
-const originalAdvance = window.AIEngine._advanceTime;
-window.AIEngine._advanceTime = function () {
-    originalAdvance.apply(this);
-    window.SaveSystem.saveGame();
-};
+// Autosave is now called directly from AIEngine._advanceTime()
+// (monkey-patch removed to prevent hook chain race conditions)

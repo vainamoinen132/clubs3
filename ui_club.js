@@ -102,7 +102,6 @@ window.UIClub = {
                         <div>
                             <h3 class="font-outfit text-gradient" style="margin-bottom: 1rem;">Financial Projections</h3>
                             <div class="glass-panel" style="padding: 1.5rem; height: 100%;">
-                                <div class="glass-panel" style="padding: 1.5rem; height: 100%;">
                                     <div style="display:flex; justify-content:space-between; margin-bottom: 0.8rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:0.8rem;">
                                         <span>Current Funds:</span> <strong style="color:#00e676;">$${gs.money.toLocaleString()}</strong>
                                     </div>
@@ -113,8 +112,6 @@ window.UIClub = {
                                         <span>Annual Upkeep:</span> <strong>-$${annualUpkeep.toLocaleString()}</strong>
                                     </div>
                                     ${gs.financial_crisis_weeks > 0 ? `<div style="text-align:center; color:#ff5252; font-weight:bold; margin-top: 1rem;">📉 FINANCIAL CRISIS</div>` : ''}
-                                </div>
-
                             </div>
                         </div>
                     </div>

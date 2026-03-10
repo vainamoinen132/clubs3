@@ -43,7 +43,7 @@ window.SeasonEvents = {
 
         Object.values(gs.fighters).forEach(f => {
             if (!f.dynamic_state.retired && f.club_id) {
-                let w = f.record ? f.record.w : 0;
+                let w = f.dynamic_state.wins || 0;
                 let fp = f.fame || 0;
                 let score = (w * 100) + (fp * 0.1);
 

@@ -40,7 +40,7 @@ window.AIEngine = {
             pclub.fighter_ids.forEach(id => {
                 let f = gs.getFighter(id);
                 // 1. Random Poaching Attempt on Star Players
-                if (f && f.contract && (f.contract.seasons_remaining <= 1 || (f.record && f.record.w > 4))) {
+                if (f && f.contract && (f.contract.seasons_remaining <= 1 || ((f.dynamic_state.wins || 0) > 4))) {
                     if (Math.random() < 0.08) { // 8% chance per week per star
                         let aiClubs = Object.values(gs.clubs).filter(c => c.id !== gs.playerClubId);
                         let bidder = aiClubs[Math.floor(Math.random() * aiClubs.length)];
@@ -54,10 +54,10 @@ window.AIEngine = {
                             let aiOffer = f.contract.salary * (1.5 + Math.random());
 
                             // Happiness check: Highly loyal fighters reject even massive offers
-                            if (f.dynamic_state.happiness >= 85 && aiOffer < f.contract.salary * 3) {
+                            if ((f.contract.happiness || 50) >= 85 && aiOffer < f.contract.salary * 3) {
                                 gs.addNews("transfer", `🛡️ LOYALTY: ${bidder.name} offered a massive contract to steal ${f.name}, but she rejected it out of loyalty to ${pclub.name}!`);
                                 f.dynamic_state.morale = Math.min(100, f.dynamic_state.morale + 10); // Boost morale for staying loyal
-                            } else if (f.dynamic_state.happiness >= 70 && aiOffer < f.contract.salary * 2) {
+                            } else if ((f.contract.happiness || 50) >= 70 && aiOffer < f.contract.salary * 2) {
                                 gs.addNews("transfer", `🛡️ REJECTED: ${bidder.name} tried to poach ${f.name}, but she is content at ${pclub.name} and declined the offer.`);
                             } else {
                                 // POACH SUCCESS
@@ -104,7 +104,7 @@ window.AIEngine = {
 
                             // Happiness check for Release Clause triggers too
                             let aiOffer = f.contract.salary * 1.5;
-                            if (f.dynamic_state.happiness >= 85 && aiOffer < f.contract.salary * 3) {
+                            if ((f.contract.happiness || 50) >= 85 && aiOffer < f.contract.salary * 3) {
                                 gs.addNews("transfer", `🛡️ LOYALTY: ${predator.name} triggered the release clause for ${f.name}, but she rejected their contract offer!`);
                                 f.dynamic_state.morale = Math.min(100, f.dynamic_state.morale + 10);
                             } else {
@@ -561,6 +561,10 @@ window.AIEngine = {
 
     _advanceTime() {
         const gs = window.GameState; // FIX: must be declared before any use below
+
+        // Generate weekly events BEFORE advancing (consolidated from sim_events.js hook)
+        if (window.SimEvents) window.SimEvents.generateWeeklyEvents();
+
         this._updateStandings();
         if (window.AITransfers) window.AITransfers.processAITransfersWeekly();
         gs.week++;
@@ -574,6 +578,18 @@ window.AIEngine = {
 
         // Process Contracts (happiness tracking — weekly)
         if (window.ContractEngine) window.ContractEngine.updateAllContracts();
+
+        // Weekly debt tracking — increment crisis counter when player is in debt
+        if (gs.money < 0) {
+            gs.financial_crisis_weeks = (gs.financial_crisis_weeks || 0) + 1;
+        } else {
+            gs.financial_crisis_weeks = 0;
+        }
+
+        // Financial crisis check — trigger forced sale after 3 consecutive weeks in debt
+        if ((gs.financial_crisis_weeks || 0) >= 3) {
+            if (window.SimEvents) window.SimEvents.triggerFinancialCrisis();
+        }
 
         // Show Season Highlights right after Week 14 ends (Start of Week 15)
         if (gs.week === 15) {
@@ -724,6 +740,9 @@ window.AIEngine = {
 
         // Refresh UI
         if (typeof updateNavUI === 'function') updateNavUI();
+
+        // Autosave after each week (consolidated from save_system.js hook)
+        if (window.SaveSystem) window.SaveSystem.saveGame();
     },
 
     _updateStandings() {
@@ -840,7 +859,7 @@ window.AIEngine = {
                     champClub.championships += 1;
 
                     if (champClub.fighter_ids.length > 0) {
-                        let topFighter = champClub.fighter_ids.map(id => gs.getFighter(id)).reduce((a, b) => (a.record ? a.record.w : 0) > (b.record ? b.record.w : 0) ? a : b);
+                        let topFighter = champClub.fighter_ids.map(id => gs.getFighter(id)).filter(Boolean).reduce((a, b) => (a.dynamic_state.wins || 0) > (b.dynamic_state.wins || 0) ? a : b);
                         if (topFighter) window.SeasonEvents.processChampionship(topFighter.id);
                     }
                 }
@@ -1473,7 +1492,7 @@ window.AIEngine = {
             },
             style_affinities: { boxing: 50, naked_wrestling: 50, catfight: 50, sexfight: 50 },
             personality: { archetype: 'Underdog', dominance_hunger: 50, submissive_lean: 20 },
-            dynamic_state: { fatigue: 0, stress: 0, injuries: [], morale: 70, wins: 0, losses: 0 },
+            dynamic_state: { form: 60, fatigue: 0, stress: 0, injuries: [], morale: 70, wins: 0, losses: 0 },
             potential: 65,
             club_id: club.id,
             contract: { salary: 8000, seasons_remaining: 1, happiness: 100 }

@@ -75,6 +75,7 @@ class MatchSimulation {
         return {
             id: fighter.id,
             name: fighter.name,
+            age: fighter.age || 25,
             originalStats: JSON.parse(JSON.stringify(fighter.core_stats || {})),
             currentStats: JSON.parse(JSON.stringify(fighter.core_stats || {})),
             affinities: JSON.parse(JSON.stringify(fighter.style_affinities || {})),
@@ -103,8 +104,8 @@ class MatchSimulation {
 
         // Apply Age Modifiers to currentStats
         // Apply stamina threshold penalties
-        SimRounds.applyPreRoundModifiers(this.f1, this.f1.originalStats, this.f1.dynamic.age);
-        SimRounds.applyPreRoundModifiers(this.f2, this.f2.originalStats, this.f2.dynamic.age);
+        SimRounds.applyPreRoundModifiers(this.f1, this.f1.originalStats, this.f1.age);
+        SimRounds.applyPreRoundModifiers(this.f2, this.f2.originalStats, this.f2.age);
 
         // ** 1C. Submission / Early Finish Check **
         let f1Wins = this.roundsWon.f1;
@@ -210,7 +211,7 @@ class MatchSimulation {
             this.log({ type: 'EXCHANGE', text: exchangeResult.text, damage: exchangeResult.damage });
 
             // Personality Bleed: Mid-Exchange Triggers
-            if (winnerObj.personality.archetype === 'Showgirl' && roundScore[winnerId] > roundScore[loserId] && Math.random() < 0.20) {
+            if (winnerObj.personality.archetype === 'Showboat' && roundScore[winnerId] > roundScore[loserId] && Math.random() < 0.20) {
                 winnerObj.dominanceScore += 5;
                 winnerObj.stamina -= 3;
                 this.log({ type: 'EVENT', text: window.NarrativeGenerator ? window.NarrativeGenerator.generateArchetypeEvent(winnerObj, 'SHOWBOAT') : `${winnerObj.name} showboats to the crowd!` });
@@ -268,8 +269,8 @@ class MatchSimulation {
         return (f.currentStats.speed * 0.4) +
             (f.currentStats.composure * 0.3) +
             (f.currentStats.aggression * 0.2) +
-            (f.dynamic.form * 0.1) -
-            (f.dynamic.fatigue * 0.2); // simplified penalty
+            ((f.dynamic.form || 60) * 0.1) -
+            ((f.dynamic.fatigue || 0) * 0.2); // simplified penalty
     }
 
     log(entry) {

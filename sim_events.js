@@ -325,7 +325,7 @@ window.SimEvents = {
             playerClub.fighter_ids = playerClub.fighter_ids.filter(id => id !== lowestFighter.id);
             lowestFighter.club_id = null;
             lowestFighter.contract.happiness = 50; // reset
-            gs.transferPool.push(lowestFighter.id);
+            gs.transferPool.push(lowestFighter);
             gs.money += salePrice;
 
             gs.financial_crisis_weeks = 0; // Reset after forced sale
@@ -343,12 +343,5 @@ window.SimEvents = {
     }
 };
 
-// Hook into AI engine
-if (window.AIEngine && window.AIEngine._advanceTime) {
-    const originalAdvance = window.AIEngine._advanceTime;
-    window.AIEngine._advanceTime = function () {
-        // Run events before saving
-        if (window.SimEvents) window.SimEvents.generateWeeklyEvents();
-        originalAdvance.apply(this);
-    };
-}
+// Weekly event generation is now called directly from AIEngine._advanceTime()
+// (monkey-patch removed to prevent hook chain race conditions)

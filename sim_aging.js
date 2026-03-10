@@ -40,12 +40,6 @@ window.SimAging = {
             }
         });
 
-        // Also age the transfer pool
-        gs.transferPool.forEach(fighter => {
-            fighter.age++;
-            this._applyAgingCurve(fighter);
-        });
-
         console.log("World has aged 1 year.");
     },
 

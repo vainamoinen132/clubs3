@@ -51,7 +51,7 @@ window.UIMatch = {
                     core_stats: { power: Math.round(base), technique: Math.round(base), speed: Math.round(base), control: 40, endurance: 40, resilience: 40, aggression: 50, composure: 40, presence: 30 },
                     style_affinities: { [matchStyle]: 60 },
                     personality: { archetype: 'Underdog' },
-                    dynamic_state: { fatigue: 0, stress: 0, injuries: [], morale: 60, wins: 0, losses: 0 }
+                    dynamic_state: { form: 60, fatigue: 0, stress: 0, injuries: [], morale: 60, wins: 0, losses: 0 }
                 };
                 return tempF;
             }
