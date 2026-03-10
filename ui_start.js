@@ -18,18 +18,23 @@ window.UIStart = {
         const hasSave = localStorage.getItem(window.SaveSystem.saveKey) !== null;
 
         startDiv.innerHTML = `
-            <div class="glass-panel" style="padding: 3rem; text-align: center; max-width: 600px; margin: 0 auto;">
-                <h1 class="font-outfit text-gradient" style="font-size: 3rem; margin-bottom: 2rem;">Club Dynasty</h1>
-                
-                ${hasSave ? `<button class="btn-primary" style="width: 100%; margin-bottom: 1rem; padding: 1.2rem; font-size: 1.2rem; background: #00e676;" onclick="window.UIStart.loadGame()">Continue Saved Game</button>` : ''}
-                
-                <button class="btn-primary" style="width: 100%; margin-bottom: 1rem; padding: 1.2rem; font-size: 1.2rem;" onclick="window.UIStart.showClubSelection()">New Game</button>
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; width:100%;">
+                <div class="glass-panel" style="padding: 3rem 3.5rem; text-align: center; max-width: 480px; width: 90%; border-top: 3px solid var(--accent);">
+                    <p style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--text-dim); margin-bottom: 0.5rem; font-weight: 600;">Queens of the Ring</p>
+                    <h1 class="font-outfit text-gradient" style="font-size: 2.6rem; margin-bottom: 0.3rem; letter-spacing: -0.03em;">Club Dynasty</h1>
+                    <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 2rem;">Build your legacy. Train your fighters. Dominate the league.</p>
+                    
+                    ${hasSave ? `<button class="btn-primary" style="width: 100%; margin-bottom: 0.7rem; padding: 0.9rem; font-size: 1rem; background: linear-gradient(135deg, #00c853, #00e676);" onclick="window.UIStart.loadGame()">Continue Saved Game</button>` : ''}
+                    
+                    <button class="btn-primary" style="width: 100%; margin-bottom: 0.7rem; padding: 0.9rem; font-size: 1rem;" onclick="window.UIStart.showClubSelection()">New Game</button>
 
-                <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-                    ${hasSave ? `<button class="btn-primary" style="flex: 1; padding: 1rem; background: #28a0e0;" onclick="window.SaveSystem.exportSaveFile()">Export Save</button>` : ''}
-                    <button class="btn-primary" style="flex: 1; padding: 1rem; background: var(--accent);" onclick="document.getElementById('save-upload').click()">Import Save</button>
-                    <input type="file" id="save-upload" style="display:none;" accept=".json" onchange="window.SaveSystem.importSaveFile(event)">
+                    <div style="display: flex; gap: 0.6rem; margin-top: 0.8rem;">
+                        ${hasSave ? `<button class="btn-secondary" style="flex: 1; padding: 0.65rem; font-size: 0.8rem;" onclick="window.SaveSystem.exportSaveFile()">Export Save</button>` : ''}
+                        <button class="btn-secondary" style="flex: 1; padding: 0.65rem; font-size: 0.8rem;" onclick="document.getElementById('save-upload').click()">Import Save</button>
+                        <input type="file" id="save-upload" style="display:none;" accept=".json" onchange="window.SaveSystem.importSaveFile(event)">
+                    </div>
                 </div>
+                <p style="margin-top: 1.5rem; font-size: 0.68rem; color: var(--text-dim); letter-spacing: 0.05em;">v1.0 &mdash; A Management Simulation</p>
             </div>
         `;
     },
@@ -55,13 +60,15 @@ window.UIStart = {
         `).join('');
 
         startDiv.innerHTML = `
-            <div style="max-width: 800px; margin: 0 auto;">
-                <h1 class="font-outfit text-gradient" style="text-align: center; margin-bottom: 2rem;">Choose Your Club</h1>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div style="max-width: 780px; margin: 0 auto; padding: 2rem;">
+                <p style="text-align:center; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); margin-bottom: 0.4rem; font-weight: 600;">Step 1</p>
+                <h1 class="font-outfit text-gradient" style="text-align: center; margin-bottom: 0.4rem; font-size: 2rem;">Choose Your Club</h1>
+                <p style="text-align:center; color: var(--text-muted); font-size: 0.85rem; margin-bottom: 2rem;">Each club has a unique identity and starting advantage.</p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                     ${clubsHtml}
                 </div>
-                <div style="text-align: center; margin-top: 2rem;">
-                    <button class="btn-primary" style="background: #555;" onclick="window.UIStart.render(document.getElementById('start-screen'))">Back</button>
+                <div style="text-align: center; margin-top: 1.5rem;">
+                    <button class="btn-secondary" style="padding: 0.6rem 2rem;" onclick="window.UIStart.render(document.getElementById('start-screen'))">Back</button>
                 </div>
             </div>
         `;

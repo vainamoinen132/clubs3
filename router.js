@@ -12,7 +12,7 @@ window.Router = {
         document.getElementById('loading-screen').classList.remove('active');
         document.getElementById('main-nav').classList.remove('hidden');
 
-        // Bind navigation clicks
+        // Bind navigation clicks (items can be inside nav-group-items or direct li children)
         document.querySelectorAll('.nav-item').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -34,6 +34,15 @@ window.Router = {
             link.classList.toggle('active', link.getAttribute('data-route') === routeId);
         });
 
+        // Auto-expand the nav group containing the active route
+        const activeLink = document.querySelector(`.nav-item[data-route="${routeId}"]`);
+        if (activeLink) {
+            const parentGroup = activeLink.closest('.nav-group');
+            if (parentGroup) {
+                parentGroup.classList.remove('collapsed');
+            }
+        }
+
         // Clear main view
         const main = document.getElementById('main-view');
         main.innerHTML = '';
@@ -50,5 +59,8 @@ window.Router = {
         } else {
             container.innerHTML = `<h1>404</h1><p>Screen '${routeId}' not found.</p>`;
         }
+
+        // Scroll main view to top on route change
+        main.scrollTop = 0;
     }
 };

@@ -81,37 +81,44 @@ window.UIClub = {
             + ut[Math.min(club.facilities?.youth || 1, 10)];
 
         container.innerHTML = `
-            ${window.UIComponents.createSectionHeader(club.name + ' Dashboard', 'Overview of your club operations.')}
+            ${window.UIComponents.createSectionHeader(club.name + ' Dashboard', 'Season ' + gs.season + ' \u2022 Week ' + gs.week + ' \u2022 ' + club.fighter_ids.length + ' Fighters')}
             
-            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.8rem;">
                 <!-- Main col -->
                 <div>
-                    <div style="margin-bottom: 2rem;">
-                        <h3 class="font-outfit text-gradient" style="margin-bottom: 1rem;">Next Fixture</h3>
+                    <div style="margin-bottom: 1.5rem;">
+                        <h3 class="font-outfit" style="margin-bottom: 0.7rem; font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em;">Next Fixture</h3>
                         ${matchHtml}
                     </div>
                     
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem;">
                         <div>
-                            <h3 class="font-outfit text-gradient" style="margin-bottom: 1rem;">Club Identity</h3>
-                            <div class="glass-panel" style="padding: 1.5rem; height: 100%;">
-                                <p><strong>Persona:</strong> <span style="text-transform: capitalize;">${club.ai_persona.replace('_', ' ')}</span></p>
-                                <p style="margin-top: 0.5rem;"><strong>Home Advantage:</strong> ${window.UIClubs ? window.UIClubs._getHomeAdvantageLabel(club.home_advantage) : club.home_advantage.replace(/_/g, ' ')}</p>
+                            <h3 class="font-outfit" style="margin-bottom: 0.7rem; font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em;">Club Identity</h3>
+                            <div class="glass-panel" style="padding: 1.2rem; height: 100%;">
+                                <div style="display:flex; justify-content:space-between; margin-bottom: 0.5rem; font-size: 0.88rem;">
+                                    <span style="color: var(--text-dim);">Persona</span>
+                                    <strong style="text-transform: capitalize;">${club.ai_persona.replace('_', ' ')}</strong>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; font-size: 0.88rem;">
+                                    <span style="color: var(--text-dim);">Advantage</span>
+                                    <strong>${window.UIClubs ? window.UIClubs._getHomeAdvantageLabel(club.home_advantage) : club.home_advantage.replace(/_/g, ' ')}</strong>
+                                </div>
                             </div>
                         </div>
                         <div>
-                            <h3 class="font-outfit text-gradient" style="margin-bottom: 1rem;">Financial Projections</h3>
-                            <div class="glass-panel" style="padding: 1.5rem; height: 100%;">
-                                    <div style="display:flex; justify-content:space-between; margin-bottom: 0.8rem; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:0.8rem;">
-                                        <span>Current Funds:</span> <strong style="color:#00e676;">$${gs.money.toLocaleString()}</strong>
-                                    </div>
-                                    <div style="display:flex; justify-content:space-between; margin-bottom: 0.5rem; color: #ff9999;">
-                                        <span>Annual Salaries:</span> <strong>-$${annualSalaries.toLocaleString()}</strong>
-                                    </div>
-                                    <div style="display:flex; justify-content:space-between; color: #ff9999;">
-                                        <span>Annual Upkeep:</span> <strong>-$${annualUpkeep.toLocaleString()}</strong>
-                                    </div>
-                                    ${gs.financial_crisis_weeks > 0 ? `<div style="text-align:center; color:#ff5252; font-weight:bold; margin-top: 1rem;">📉 FINANCIAL CRISIS</div>` : ''}
+                            <h3 class="font-outfit" style="margin-bottom: 0.7rem; font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em;">Finances</h3>
+                            <div class="glass-panel" style="padding: 1.2rem; height: 100%;">
+                                <div style="display:flex; justify-content:space-between; margin-bottom: 0.6rem; padding-bottom:0.6rem; border-bottom:1px solid var(--border-glass); font-size: 0.88rem;">
+                                    <span style="color: var(--text-dim);">Funds</span>
+                                    <strong style="color: var(--green);">$${gs.money.toLocaleString()}</strong>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; margin-bottom: 0.35rem; font-size: 0.82rem; color: var(--text-muted);">
+                                    <span>Salaries/yr</span> <span style="color:#ff9999;">-$${annualSalaries.toLocaleString()}</span>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; font-size: 0.82rem; color: var(--text-muted);">
+                                    <span>Upkeep/yr</span> <span style="color:#ff9999;">-$${annualUpkeep.toLocaleString()}</span>
+                                </div>
+                                ${gs.financial_crisis_weeks > 0 ? `<div style="text-align:center; color:var(--red); font-weight:700; margin-top: 0.8rem; font-size: 0.78rem; text-transform:uppercase; letter-spacing:0.05em;">Financial Crisis (Week ${gs.financial_crisis_weeks})</div>` : ''}
                             </div>
                         </div>
                     </div>
@@ -119,7 +126,7 @@ window.UIClub = {
                 
                 <!-- Sidebar col -->
                 <div>
-                    <h3 class="font-outfit text-gradient" style="margin-bottom: 1rem;">Top Fighters</h3>
+                    <h3 class="font-outfit" style="margin-bottom: 0.7rem; font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em;">Top Fighters</h3>
                     <div id="dashboard-fighters"></div>
                 </div>
             </div>

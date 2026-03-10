@@ -79,27 +79,11 @@
         </div>
 
         <!-- Sidebar Navigation (Hidden on start screen) -->
-        <nav id="main-nav" class="glass-panel hidden">
+        <nav id="main-nav" class="hidden">
             <div class="nav-branding">
                 <h1 class="font-outfit text-gradient">Club Dynasty</h1>
                 <div class="season-badge" id="nav-season-badge">Season 1</div>
             </div>
-            <ul class="nav-links">
-                <li><a href="#" data-route="club" class="nav-item active">Dashboard</a></li>
-                <li><a href="#" data-route="roster" class="nav-item">Roster</a></li>
-                <li><a href="#" data-route="staff" class="nav-item">Staff</a></li>
-                <li><a href="#" data-route="training" class="nav-item">Training</a></li>
-                <li><a href="#" data-route="interactions" class="nav-item">Interactions</a></li>
-                <li><a href="#" data-route="relationships" class="nav-item">Relationships</a></li>
-                <li><a href="#" data-route="underground" class="nav-item" style="color:#ff5252">Underground</a></li>
-                <li><a href="#" data-route="facilities" class="nav-item">Facilities</a></li>
-                <li><a href="#" data-route="sponsors" class="nav-item" style="color:#d4af37;">Sponsors</a></li>
-                <li><a href="#" data-route="transfers" class="nav-item">Transfers</a></li>
-                <li><a href="#" data-route="league" class="nav-item">League</a></li>
-                <li><a href="#" data-route="halloffame" class="nav-item">Hall of Fame</a></li>
-                <li><a href="#" data-route="clubs" class="nav-item">Clubs</a></li>
-                <li><a href="#" data-route="news" class="nav-item">News</a></li>
-            </ul>
 
             <div class="nav-resources">
                 <div class="resource-item">
@@ -111,12 +95,68 @@
                     <span class="res-value" id="res-fame">0</span>
                 </div>
                 <div class="resource-item highlight">
-                    <span class="res-label">Action Points</span>
+                    <span class="res-label">AP</span>
                     <span class="res-value" id="res-ap">0</span>
                 </div>
             </div>
 
-            <button id="btn-advance-week" class="btn-primary glass-btn">Advance Week</button>
+            <div class="nav-divider"></div>
+
+            <ul class="nav-links">
+                <!-- Overview -->
+                <li><a href="#" data-route="club" class="nav-item active"><span class="nav-icon">&#9673;</span> Dashboard</a></li>
+                <li><a href="#" data-route="news" class="nav-item"><span class="nav-icon">&#9993;</span> News</a></li>
+
+                <!-- Club Management -->
+                <li class="nav-group" data-group="club-mgmt">
+                    <div class="nav-group-label" onclick="this.parentElement.classList.toggle('collapsed')">
+                        Club Management <span class="chevron">&#9660;</span>
+                    </div>
+                    <div class="nav-group-items">
+                        <a href="#" data-route="roster" class="nav-item"><span class="nav-icon">&#9823;</span> Roster</a>
+                        <a href="#" data-route="staff" class="nav-item"><span class="nav-icon">&#9881;</span> Staff</a>
+                        <a href="#" data-route="training" class="nav-item"><span class="nav-icon">&#9733;</span> Training</a>
+                        <a href="#" data-route="facilities" class="nav-item"><span class="nav-icon">&#9962;</span> Facilities</a>
+                    </div>
+                </li>
+
+                <!-- People -->
+                <li class="nav-group" data-group="people">
+                    <div class="nav-group-label" onclick="this.parentElement.classList.toggle('collapsed')">
+                        People <span class="chevron">&#9660;</span>
+                    </div>
+                    <div class="nav-group-items">
+                        <a href="#" data-route="interactions" class="nav-item"><span class="nav-icon">&#9778;</span> Interactions</a>
+                        <a href="#" data-route="relationships" class="nav-item"><span class="nav-icon">&#9829;</span> Relationships</a>
+                    </div>
+                </li>
+
+                <!-- Competition -->
+                <li class="nav-group" data-group="competition">
+                    <div class="nav-group-label" onclick="this.parentElement.classList.toggle('collapsed')">
+                        Competition <span class="chevron">&#9660;</span>
+                    </div>
+                    <div class="nav-group-items">
+                        <a href="#" data-route="league" class="nav-item"><span class="nav-icon">&#9812;</span> League</a>
+                        <a href="#" data-route="transfers" class="nav-item"><span class="nav-icon">&#8644;</span> Transfers</a>
+                        <a href="#" data-route="clubs" class="nav-item"><span class="nav-icon">&#9971;</span> Clubs</a>
+                        <a href="#" data-route="halloffame" class="nav-item"><span class="nav-icon">&#9813;</span> Hall of Fame</a>
+                    </div>
+                </li>
+
+                <!-- Special -->
+                <li class="nav-group" data-group="special">
+                    <div class="nav-group-label" onclick="this.parentElement.classList.toggle('collapsed')">
+                        Special <span class="chevron">&#9660;</span>
+                    </div>
+                    <div class="nav-group-items">
+                        <a href="#" data-route="underground" class="nav-item"><span class="nav-icon">&#9760;</span> Underground</a>
+                        <a href="#" data-route="sponsors" class="nav-item"><span class="nav-icon">&#9830;</span> Sponsors</a>
+                    </div>
+                </li>
+            </ul>
+
+            <button id="btn-advance-week" class="btn-advance">Advance Week</button>
         </nav>
 
         <!-- Main Content Area -->

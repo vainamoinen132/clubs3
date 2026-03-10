@@ -126,8 +126,8 @@ window.UIComponents = {
 
     createSectionHeader(title, subtitle = "") {
         let html = `<div class="section-header" style="margin-bottom: 1.5rem;">
-            <h2 class="font-outfit text-gradient" style="font-size: 2rem;">${title}</h2>`;
-        if (subtitle) html += `<p style="color: var(--text-muted);">${subtitle}</p>`;
+            <h2 class="font-outfit text-gradient" style="font-size: 1.7rem; letter-spacing: -0.02em;">${title}</h2>`;
+        if (subtitle) html += `<p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.2rem;">${subtitle}</p>`;
         html += `</div>`;
         return html;
     },
@@ -300,32 +300,53 @@ window.UIComponents = {
 const dynamicCSS = document.createElement('style');
 dynamicCSS.textContent = `
     .fighter-card {
-        padding: 1.2rem;
-        border-radius: 12px;
+        padding: 1rem 1.1rem;
+        border-radius: var(--radius-lg, 14px);
         background: var(--bg-panel);
-        transition: transform 0.2s, background 0.2s;
-        margin-bottom: 1rem;
+        border: 1px solid var(--border-glass, rgba(255,255,255,0.07));
+        transition: transform 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+        margin-bottom: 0.6rem;
     }
     .fighter-card.hoverable:hover {
-        transform: translateY(-4px);
+        transform: translateY(-2px);
         background: var(--bg-panel-hover);
+        border-color: rgba(255,255,255,0.1);
     }
-    .fighter-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.8rem; }
-    .fighter-header h3 { font-family: var(--font-heading); color: #fff; font-size: 1.2rem; }
-    .fighter-header .age { font-size: 0.85rem; color: var(--text-muted); }
-    .fighter-tags { margin-bottom: 1rem; }
-    .tag { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; font-weight: 600; margin-right: 0.5rem; background: rgba(255,255,255,0.1); color: #ddd; }
-    .fighter-metrics { display: flex; justify-content: space-between; background: rgba(0,0,0,0.4); padding: 0.8rem; border-radius: 8px; }
-    .metric { display: flex; flex-direction: column; align-items: center; }
-    .metric span { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.2rem;}
-    .metric strong { color: #fff; font-family: var(--font-heading); }
+    .fighter-header { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.5rem; }
+    .fighter-header h3 { font-family: var(--font-heading); color: #fff; font-size: 1.05rem; font-weight: 600; }
+    .fighter-header .age { font-size: 0.78rem; color: var(--text-muted); }
+    .fighter-tags { margin-bottom: 0.6rem; display: flex; gap: 0.35rem; flex-wrap: wrap; }
+    .tag {
+        display: inline-block;
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.68rem;
+        font-weight: 600;
+        background: rgba(255,255,255,0.06);
+        color: #ccc;
+        border: 1px solid rgba(255,255,255,0.04);
+        letter-spacing: 0.01em;
+    }
+    .tag.archetype { background: var(--accent-soft, rgba(255,51,102,0.13)); color: var(--accent, #FF3366); border-color: rgba(255,51,102,0.1); }
+    .tag.form { background: rgba(59,130,246,0.12); color: #60a5fa; border-color: rgba(59,130,246,0.1); }
+    .fighter-metrics {
+        display: flex;
+        justify-content: space-between;
+        background: rgba(0,0,0,0.3);
+        padding: 0.6rem 0.7rem;
+        border-radius: var(--radius-sm, 6px);
+        gap: 0.25rem;
+    }
+    .metric { display: flex; flex-direction: column; align-items: center; flex: 1; }
+    .metric span { font-size: 0.62rem; color: var(--text-dim, #50505e); text-transform: uppercase; margin-bottom: 0.15rem; letter-spacing: 0.04em; }
+    .metric strong { color: #fff; font-family: var(--font-heading); font-size: 0.88rem; }
     .fighter-portrait-sm {
-        width: 70px;
-        height: 70px;
+        width: 60px;
+        height: 60px;
         object-fit: cover;
-        border-radius: 8px;
-        border: 2px solid rgba(255,255,255,0.15);
-        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        border-radius: var(--radius-sm, 6px);
+        border: 2px solid rgba(255,255,255,0.1);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.4);
         flex-shrink: 0;
     }
 `;
